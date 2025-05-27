@@ -1,0 +1,64 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+**/.ipynb_checkpoints/
+
+# Jupyter runtime
+*.nbconvert.ipynb
+
+# VS Code and other IDE/editor configs
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+
+# Test and coverage
+.coverage
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+.pytest_cache/
+
+# PyInstaller
+dist/
+build/
+*.spec
+
+# Streamlit cache
+.streamlit/
+
+# Ignore secrets (never commit tokens or API keys)
+.env
+.env.*
+
+# MyPy and other tooling
+.mypy_cache/
+.pyre/
+.pytype/
+
+# OS-specific
+ehthumbs.db
+Icon?
+

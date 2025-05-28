@@ -1,79 +1,170 @@
 import streamlit as st
 import pandas as pd
+import os
+import csv
+import re
+from typing import List
 from utils.annotation_helpers import load_session, save_session
 
+ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/sample_with_llm_suggestions.csv"
 
-st.set_page_config(layout="wide")
-st.title("📝 Political Corruption Annotation Tool")
+KEY_TERMS = [
+    "bribery", "embezzlement", "nepotism", "corruption", "fraud",
+    "abuse of power", "favoritism", "money laundering", "kickback", "cronyism"
+]
 
-# ========== User Login ==========
-user_id = st.text_input("Enter your username (for saving progress):")
+def save_annotation(entry: dict):
+    file_exists = os.path.isfile(ANNOTATION_FILE)
+    with open(ANNOTATION_FILE, mode="a", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=entry.keys())
+        if not file_exists:
+            writer.writeheader()
+        writer.writerow(entry)
 
-if not user_id:
-    st.stop()
+def highlight_translated_text(text: str, highlights: List[str]) -> str:
+    if not isinstance(text, str):
+        return ""
+    for hl in highlights:
+        if not isinstance(hl, str) or not hl.strip():
+            continue
+        pattern = re.escape(hl.strip())
+        regex = re.compile(pattern, re.IGNORECASE)
+        text = regex.sub(
+            r"<span style='background-color: #ffe8cc; padding: 2px; border-radius: 4px;'>\g<0></span>",
+            text,
+            count=1
+        )
+    return text
 
-session_data = load_session(user_id)
+def highlight_keywords(text: str, terms: List[str]) -> str:
+    parts = re.split(r'(<[^>]+>)', text)
+    for i, part in enumerate(parts):
+        if not part.startswith("<"):
+            for term in terms:
+                pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+                part = pattern.sub(
+                    r"<span style='background-color: #cce5ff; padding: 2px; border-radius: 4px;'>\g<0></span>",
+                    part
+                )
+            parts[i] = part
+    return "".join(parts)
 
-# ========== Load Data ==========
 @st.cache_data
 def load_articles():
     return pd.read_csv(DATA_PATH)
 
-df = load_articles()
-total_articles = len(df)
+def main():
+    st.set_page_config(layout="wide")
+    st.title("📝 Political Corruption Annotation Tool")
 
-# Find current index
-current_index = session_data.get("last_index", 0)
+    user_id = st.text_input("Enter your username:")
+    if not user_id:
+        st.stop()
 
-if current_index >= total_articles:
-    st.success("✅ You have completed all articles!")
-    st.stop()
+    sess = load_session(user_id)
+    df = load_articles()
+    total = len(df)
+    current = sess.get("current_index", 0)
 
-row = df.iloc[current_index]
+    # Initialize state flags
+    if "next_clicked" not in st.session_state:
+        st.session_state.next_clicked = False
+    if "jump_requested" not in st.session_state:
+        st.session_state.jump_requested = False
 
-# ========== Display Article ==========
-st.subheader(f"Article {current_index + 1} of {total_articles}")
+    if current >= total:
+        st.success("✅ You have completed all articles!")
+        st.stop()
 
-col1, col2 = st.columns(2)
+    row = df.iloc[current]
 
-with col1:
-    st.markdown("**Original Text**")
-    st.write(row.get("original_text", ""))
+    st.subheader(f"Article {current + 1} of {total}")
+    st.number_input(
+        "Navigate Articles",
+        0, total - 1, current,
+        key="nav",
+        on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
+    )
 
-with col2:
-    st.markdown("**Translated Text**", unsafe_allow_html=True)
-    st.markdown(row.get("translated_text", ""), unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("**Original Text**")
+        st.write(row.get("original_text", ""))
 
-st.markdown("---")
-st.markdown("**LLM Suggestions**")
-st.markdown(f"**Rationale:** _{row.get('llm_rationale', '')}_")
-st.markdown(f"**Evidence:** {row.get('llm_evidence', '')}")
+    with col2:
+        st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
+        raw_text = row.get("translated_text", "")
+        llm_raw = row.get("llm_evidence", "")
+        llm_evidence_list = []
 
-# ========== Annotation Form ==========
-st.markdown("### Your Label")
-label = st.radio(
-    "Does this article primarily concern political corruption?",
-    ["Yes", "Mentioned but not central", "No", "Unsure"]
-)
+        if isinstance(llm_raw, str):
+            llm_evidence_list = [e.strip() for e in llm_raw.split(";") if e.strip()]
 
-notes = st.text_area("Comments (optional):")
+        highlighted = highlight_translated_text(raw_text, llm_evidence_list)
+        highlighted = highlight_keywords(highlighted, KEY_TERMS)
+        st.markdown(highlighted, unsafe_allow_html=True)
 
-if st.button("Save and Continue"):
-    entry = {
-        "article_index": current_index,
-        "tentative_label": label,
-        "notes": notes,
-        "original_text": row.get("original_text", ""),
-        "translated_text": row.get("translated_text", "")
-    }
+    st.markdown("""
+    <div style="margin-top: 10px;">
+        <span style='background-color: #ffe8cc; padding: 2px 6px; border-radius: 4px;'>LLM Highlight</span>
+        &nbsp;
+        <span style='background-color: #cce5ff; padding: 2px 6px; border-radius: 4px;'>Keyword</span>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Save to session
-    annotations = session_data.get("annotations", [])
-    annotations.append(entry)
-    session_data["annotations"] = annotations
-    session_data["last_index"] = current_index + 1
-    save_session(user_id, session_data)
+    st.markdown("---")
+    st.markdown("**LLM Suggestions**")
+    st.markdown(f"**Rationale:** _{row.get('llm_rationale', '')}_")
+    st.markdown(f"**Evidence:** {row.get('llm_evidence', '')}")
 
-    st.success("Saved! Reloading next article...")
-    st.experimental_rerun()
+    label = st.radio(
+        "Does this article primarily concern political corruption?",
+        ["Yes", "Mentioned but not central", "No", "Unsure"],
+        key="label"
+    )
+
+    notes = st.text_area("Comments (optional):", key="notes")
+
+    if st.button("Next"):
+        entry = {
+            "user_id": user_id,
+            "article_index": current,
+            "tentative_label": label,
+            "notes": notes,
+            "original_text": row.get("original_text", ""),
+            "translated_text": row.get("translated_text", "")
+        }
+
+        # Save to session
+        existing = sess.get("annotations", [])
+        existing = [a for a in existing if a["article_index"] != current]
+        existing.append(entry)
+        sess["annotations"] = existing
+
+        # Write to CSV
+        save_annotation(entry)
+
+        # Update session index
+        sess["current_index"] = current + 1
+        save_session(user_id, sess)
+
+        # Trigger rerun for next
+        st.session_state.next_clicked = True
+
+    # Handle reruns after interactions
+    if st.session_state.next_clicked:
+        st.session_state.next_clicked = False
+        st.rerun()
+
+    if st.session_state.jump_requested:
+        st.session_state.jump_requested = False
+        st.rerun()
+
+def jump_to(index: int, sess, user_id):
+    sess["current_index"] = index
+    save_session(user_id, sess)
+    st.session_state["jump_requested"] = True  # set a rerun flag instead
+
+if __name__ == "__main__":
+    main()

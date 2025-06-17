@@ -15,12 +15,37 @@ KEY_TERMS = [
 ]
 
 def save_annotation(entry: dict):
-    file_exists = os.path.isfile(ANNOTATION_FILE)
-    with open(ANNOTATION_FILE, mode="a", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=entry.keys())
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(entry)
+    annotations = []
+
+    if os.path.exists(ANNOTATION_FILE):
+        with open(ANNOTATION_FILE, mode="r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            annotations = list(reader)
+
+    annotations = [
+        a for a in annotations
+        if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
+    ]
+    annotations.append(entry)
+    fieldnames = list(entry.keys())
+
+    with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(annotations)
+
+    output_dir = os.path.expanduser("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations")
+    os.makedirs(output_dir, exist_ok=True)
+
+    csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
+    with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(annotations)
+
+    excel_path = os.path.join(output_dir, "annotations-fyp-yara.xlsx")
+    df = pd.DataFrame(annotations)
+    df.to_excel(excel_path, index=False)
 
 def highlight_translated_text(text: str, highlights: List[str]) -> str:
     if not isinstance(text, str):
@@ -67,7 +92,6 @@ def main():
     total = len(df)
     current = sess.get("current_index", 0)
 
-    # Initialize state flags
     if "next_clicked" not in st.session_state:
         st.session_state.next_clicked = False
     if "jump_requested" not in st.session_state:
@@ -132,27 +156,23 @@ def main():
             "article_index": current,
             "tentative_label": label,
             "notes": notes,
+            "uri": row.get("uri", ""),
             "original_text": row.get("original_text", ""),
             "translated_text": row.get("translated_text", "")
         }
 
-        # Save to session
         existing = sess.get("annotations", [])
         existing = [a for a in existing if a["article_index"] != current]
         existing.append(entry)
         sess["annotations"] = existing
 
-        # Write to CSV
         save_annotation(entry)
 
-        # Update session index
         sess["current_index"] = current + 1
         save_session(user_id, sess)
 
-        # Trigger rerun for next
         st.session_state.next_clicked = True
 
-    # Handle reruns after interactions
     if st.session_state.next_clicked:
         st.session_state.next_clicked = False
         st.rerun()
@@ -164,7 +184,7 @@ def main():
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
     save_session(user_id, sess)
-    st.session_state["jump_requested"] = True  # set a rerun flag instead
+    st.session_state["jump_requested"] = True
 
 if __name__ == "__main__":
     main()

@@ -7,7 +7,8 @@ from typing import List
 from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/df_output_with_llm_annotations.csv"
+#DATA_PATH = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/df_output_with_llm_annotations.csv"
+DATA_PATH = os.path.expanduser("~/df_copy.csv")
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",

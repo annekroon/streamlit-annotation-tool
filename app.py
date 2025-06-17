@@ -7,7 +7,7 @@ from typing import List
 from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "data/sample_with_llm_suggestions.csv"
+DATA_PATH = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/df_output_with_llm_annotations.csv"
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",
@@ -27,7 +27,11 @@ def save_annotation(entry: dict):
         if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
     ]
     annotations.append(entry)
-    fieldnames = list(entry.keys())
+
+    fieldnames = [
+        'user_id', 'article_index', 'tentative_label', 'notes',
+        'uri', 'original_text', 'translated_text'
+    ]
 
     with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -78,6 +82,11 @@ def highlight_keywords(text: str, terms: List[str]) -> str:
 @st.cache_data
 def load_articles():
     return pd.read_csv(DATA_PATH)
+
+def jump_to(index: int, sess, user_id):
+    sess["current_index"] = index
+    save_session(user_id, sess)
+    st.session_state["jump_requested"] = True
 
 def main():
     st.set_page_config(layout="wide")
@@ -180,11 +189,6 @@ def main():
     if st.session_state.jump_requested:
         st.session_state.jump_requested = False
         st.rerun()
-
-def jump_to(index: int, sess, user_id):
-    sess["current_index"] = index
-    save_session(user_id, sess)
-    st.session_state["jump_requested"] = True
 
 if __name__ == "__main__":
     main()

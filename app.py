@@ -9,7 +9,7 @@ from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
 #DATA_PATH = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/df_output_with_llm_annotations.csv"
-DATA_PATH ="data/df_copy.csv"
+DATA_PATH = "data/df_copy.csv"
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",
@@ -20,9 +20,12 @@ def save_annotation(entry: dict):
     annotations = []
 
     if os.path.exists(ANNOTATION_FILE):
-        with open(ANNOTATION_FILE, mode="r", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            annotations = list(reader)
+        try:
+            with open(ANNOTATION_FILE, mode="r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                annotations = list(reader)
+        except Exception as e:
+            print(f"❌ Error reading local annotation file: {e}")
 
     annotations = [
         a for a in annotations
@@ -35,23 +38,34 @@ def save_annotation(entry: dict):
         'uri', 'original_text', 'translated_text'
     ]
 
-    with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(annotations)
+    # Write local annotations.csv file
+    try:
+        with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(annotations)
+        print(f"✅ Saved local annotation file: {ANNOTATION_FILE}")
+    except Exception as e:
+        print(f"❌ Error writing local annotation file: {e}")
 
     output_dir = os.path.expanduser("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations")
-    os.makedirs(output_dir, exist_ok=True)
+    try:
+        os.makedirs(output_dir, exist_ok=True)
 
-    csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
-    with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(annotations)
+        csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
+        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(annotations)
+        print(f"✅ Saved CSV to: {csv_path}")
 
-    excel_path = os.path.join(output_dir, "annotations-fyp-yara.xlsx")
-    df = pd.DataFrame(annotations)
-    df.to_excel(excel_path, index=False)
+        excel_path = os.path.join(output_dir, "annotations-fyp-yara.xlsx")
+        df = pd.DataFrame(annotations)
+        df.to_excel(excel_path, index=False)
+        print(f"✅ Saved Excel to: {excel_path}")
+
+    except Exception as e:
+        print(f"❌ Error saving annotations to shared folder: {e}")
 
 def highlight_translated_text(text: str, highlights: List[str]) -> str:
     if not isinstance(text, str):

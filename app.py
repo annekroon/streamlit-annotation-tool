@@ -4,6 +4,7 @@ import os
 import csv
 import re
 from typing import List
+import openpyxl
 from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"

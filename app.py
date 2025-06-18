@@ -48,7 +48,7 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing local annotation file: {e}")
 
-    output_dir = os.path.expanduser("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations")
+    output_dir = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations"
     try:
         os.makedirs(output_dir, exist_ok=True)
 

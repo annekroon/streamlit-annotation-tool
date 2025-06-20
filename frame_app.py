@@ -8,7 +8,7 @@ import openpyxl
 from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "data/df_copy.csv"
+DATA_PATH = "data/sample_with_llm_suggestions.csv"
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",
@@ -26,9 +26,18 @@ FRAME_LABELS = [
     "No clear frame"
 ]
 
+FRAME_COLORS = {
+    "frame_1_evidence": "#ffe8cc",  # light orange
+    "frame_2_evidence": "#ccf2ff",  # light blue
+    "frame_3_evidence": "#e6ccff",  # light purple
+    "frame_4_evidence": "#d5f5e3",  # light green
+    "frame_5_evidence": "#ffcccc",  # light red
+    "frame_6_evidence": "#ffffcc",  # light yellow
+    "frame_7_evidence": "#f8d7da"   # light pink
+}
+
 def save_annotation(entry: dict):
     annotations = []
-
     if os.path.exists(ANNOTATION_FILE):
         try:
             with open(ANNOTATION_FILE, mode="r", encoding="utf-8") as f:
@@ -60,7 +69,6 @@ def save_annotation(entry: dict):
     output_dir = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations"
     try:
         os.makedirs(output_dir, exist_ok=True)
-
         csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
         with open(csv_path, mode="w", newline="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -76,19 +84,23 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error saving annotations to shared folder: {e}")
 
-def highlight_translated_text(text: str, highlights: List[str]) -> str:
+def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
-    for hl in highlights:
-        if not isinstance(hl, str) or not hl.strip():
+    for col, phrases in evidence_dict.items():
+        if not isinstance(phrases, list):
             continue
-        pattern = re.escape(hl.strip())
-        regex = re.compile(pattern, re.IGNORECASE)
-        text = regex.sub(
-            r"<span style='background-color: #ffe8cc; padding: 2px; border-radius: 4px;'>\g<0></span>",
-            text,
-            count=1
-        )
+        color = FRAME_COLORS.get(col, "#eeeeee")
+        for hl in phrases:
+            if not isinstance(hl, str) or not hl.strip():
+                continue
+            pattern = re.escape(hl.strip())
+            regex = re.compile(pattern, re.IGNORECASE)
+            text = regex.sub(
+                fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
+                text,
+                count=1
+            )
     return text
 
 def highlight_keywords(text: str, terms: List[str]) -> str:
@@ -153,17 +165,26 @@ def main():
     with col2:
         st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
         raw_text = row.get("translated_text", "")
-        llm_raw = row.get("llm_evidence", "")
-        llm_evidence_list = [e.strip() for e in llm_raw.split(";") if e.strip()] if isinstance(llm_raw, str) else []
+        evidence_dict = {}
+        for i in range(1, 8):
+            col_name = f"frame_{i}_evidence"
+            val = row.get(col_name, "")
+            if isinstance(val, str) and val.strip():
+                evidence_dict[col_name] = [e.strip() for e in val.split(";") if e.strip()]
 
-        highlighted = highlight_translated_text(raw_text, llm_evidence_list)
+        highlighted = highlight_multiple_frames(raw_text, evidence_dict)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
         st.markdown(highlighted, unsafe_allow_html=True)
 
     st.markdown("""
     <div style="margin-top: 10px;">
-        <span style='background-color: #ffe8cc; padding: 2px 6px; border-radius: 4px;'>LLM Highlight</span>
-        &nbsp;
+        <span style='background-color: #ffe8cc; padding: 2px 6px; border-radius: 4px;'>Frame 1</span>
+        <span style='background-color: #ccf2ff; padding: 2px 6px; border-radius: 4px;'>Frame 2</span>
+        <span style='background-color: #e6ccff; padding: 2px 6px; border-radius: 4px;'>Frame 3</span>
+        <span style='background-color: #d5f5e3; padding: 2px 6px; border-radius: 4px;'>Frame 4</span>
+        <span style='background-color: #ffcccc; padding: 2px 6px; border-radius: 4px;'>Frame 5</span>
+        <span style='background-color: #ffffcc; padding: 2px 6px; border-radius: 4px;'>Frame 6</span>
+        <span style='background-color: #f8d7da; padding: 2px 6px; border-radius: 4px;'>Frame 7</span>
         <span style='background-color: #cce5ff; padding: 2px 6px; border-radius: 4px;'>Keyword</span>
     </div>
     """, unsafe_allow_html=True)
@@ -183,7 +204,6 @@ def main():
     st.markdown("---")
     st.markdown("**LLM Suggestions**")
     st.markdown(f"**Rationale:** _{row.get('llm_rationale', '')}_")
-    st.markdown(f"**Evidence:** {row.get('llm_evidence', '')}")
 
     frame_labels = st.multiselect(
         "Select all frames that apply to this article:",
@@ -228,3 +248,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

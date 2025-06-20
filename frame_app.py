@@ -257,4 +257,8 @@ def main():
             save_annotation(entry)
 
             sess["current_index"] = current + 1
-            save_session(user_id, sess
+            save_session(user_id, sess)
+            st.rerun()
+
+if __name__ == "__main__":
+    main()

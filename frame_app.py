@@ -168,6 +168,19 @@ def main():
         on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
     )
 
+    # Reset frames and inputs if flagged for reset
+    if st.session_state.get("reset_frames", False):
+        for label in FRAME_LABELS:
+            st.session_state[f"{label}_radio"] = "Not Present"
+        st.session_state["notes"] = ""
+        st.session_state["flagged"] = False
+        st.session_state["reset_frames"] = False
+
+    # Initialize frame selections to 'Not Present' if not set
+    for label in FRAME_LABELS:
+        if f"{label}_radio" not in st.session_state:
+            st.session_state[f"{label}_radio"] = "Not Present"
+
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Original Text**")
@@ -196,10 +209,6 @@ def main():
     st.markdown(highlight_keywords(rationale, KEY_TERMS), unsafe_allow_html=True)
 
     st.markdown("### 🏷️ Frame Presence")
-
-    for label in FRAME_LABELS:
-        if f"{label}_radio" not in st.session_state:
-            st.session_state[f"{label}_radio"] = "Not Present"
 
     frame_selections = {}
     for label in FRAME_LABELS:
@@ -243,11 +252,8 @@ def main():
             sess["current_index"] = current + 1
             save_session(user_id, sess)
 
-            # Reset frame selections to "Not Present"
-            for label in FRAME_LABELS:
-                st.session_state[f"{label}_radio"] = "Not Present"
-            st.session_state["notes"] = ""
-            st.session_state["flagged"] = False
+            # Mark reset to happen on next rerun
+            st.session_state["reset_frames"] = True
 
             st.experimental_rerun()
 

@@ -6,6 +6,8 @@ import re
 import json
 import numpy as np
 from typing import List
+import html
+import string
 
 ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/news_sample_with_7_frames.csv"
@@ -98,33 +100,48 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing local annotation file: {e}")
 
+
+
+def normalize_text(text):
+    return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
+
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
 
+    original_text = text
     highlights = []
+    
+    # Preprocess text
+    text_lower = normalize_text(text)
+
+    # Collect normalized matches
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
         for phrase in phrases:
-            if phrase.strip():
+            clean_phrase = normalize_text(phrase)
+            if clean_phrase and clean_phrase in text_lower:
+                # Use exact phrase from original phrase for highlighting (preserve casing)
                 highlights.append((phrase.strip(), color))
 
-    # Sort phrases by length (longest first) to avoid nested overlaps
+    # Sort by phrase length to avoid nested spans
     highlights.sort(key=lambda x: -len(x[0]))
 
-    # Prevent overlapping by replacing only the first occurrence of each
-    parts = re.split(r'(<[^>]+>)', text)  # avoid breaking tags
-    for i, part in enumerate(parts):
-        if not part.startswith("<"):
-            for phrase, color in highlights:
-                pattern = re.compile(re.escape(phrase), re.IGNORECASE)
-                part = pattern.sub(
-                    fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
-                    part,
-                    count=1  # highlight only first instance
-                )
-            parts[i] = part
-    return "".join(parts)
+    for phrase, color in highlights:
+        pattern = re.escape(phrase.strip())
+        try:
+            text = re.sub(
+                pattern,
+                f"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\\g<0></span>",
+                text,
+                count=1,
+                flags=re.IGNORECASE
+            )
+        except re.error:
+            continue  # skip bad patterns
+
+    return text
+
 
 
 def highlight_keywords(text: str, terms: List[str]) -> str:
@@ -202,9 +219,10 @@ def main():
         highlighted = highlight_multiple_frames(raw_text, evidence_dict)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
         st.markdown(
-            f"<div style='border:1px solid #ddd; padding:10px'>{highlighted}</div>",
+            f"<div style='border:1px solid #ddd; padding:10px; overflow:visible;'>{highlighted}</div>",
             unsafe_allow_html=True
         )
+
 
 
 

@@ -36,6 +36,10 @@ FRAME_COLORS = {
     "frame_7_evidence": "#f8d7da"   # light pink
 }
 
+@st.cache_data
+def load_articles():
+    return pd.read_csv(DATA_PATH)
+
 def save_annotation(entry: dict):
     annotations = []
     if os.path.exists(ANNOTATION_FILE):
@@ -46,16 +50,13 @@ def save_annotation(entry: dict):
         except Exception as e:
             print(f"❌ Error reading local annotation file: {e}")
 
-    annotations = [
-        a for a in annotations
-        if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
-    ]
+    annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))]
     annotations.append(entry)
 
     fieldnames = [
-        'user_id', 'article_index', 'frame_labels', 'notes', 'flagged',
+        'user_id', 'article_index', 'notes', 'flagged',
         'uri', 'original_text', 'translated_text'
-    ]
+    ] + [f"{label}_present" for label in FRAME_LABELS]
 
     try:
         with open(ANNOTATION_FILE, mode="w", newline="utf-8") as f:
@@ -80,28 +81,33 @@ def save_annotation(entry: dict):
         df = pd.DataFrame(annotations)
         df.to_excel(excel_path, index=False)
         print(f"✅ Saved Excel to: {excel_path}")
-
     except Exception as e:
         print(f"❌ Error saving annotations to shared folder: {e}")
 
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
+
+    highlights = []
     for col, phrases in evidence_dict.items():
-        if not isinstance(phrases, list):
-            continue
         color = FRAME_COLORS.get(col, "#eeeeee")
-        for hl in phrases:
-            if not isinstance(hl, str) or not hl.strip():
-                continue
-            pattern = re.escape(hl.strip())
-            regex = re.compile(pattern, re.IGNORECASE)
-            text = regex.sub(
-                fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
-                text,
-                count=1
-            )
-    return text
+        for phrase in phrases:
+            if phrase.strip():
+                highlights.append((phrase.strip(), color))
+
+    highlights.sort(key=lambda x: -len(x[0]))  # prioritize longer matches
+
+    parts = re.split(r'(<[^>]+>)', text)
+    for i, part in enumerate(parts):
+        if not part.startswith("<"):
+            for phrase, color in highlights:
+                pattern = re.compile(re.escape(phrase), re.IGNORECASE)
+                part = pattern.sub(
+                    fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
+                    part, count=1
+                )
+            parts[i] = part
+    return "".join(parts)
 
 def highlight_keywords(text: str, terms: List[str]) -> str:
     parts = re.split(r'(<[^>]+>)', text)
@@ -115,10 +121,6 @@ def highlight_keywords(text: str, terms: List[str]) -> str:
                 )
             parts[i] = part
     return "".join(parts)
-
-@st.cache_data
-def load_articles():
-    return pd.read_csv(DATA_PATH)
 
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
@@ -138,11 +140,6 @@ def main():
     total = len(df)
     current = sess.get("current_index", 0)
 
-    if "next_clicked" not in st.session_state:
-        st.session_state.next_clicked = False
-    if "jump_requested" not in st.session_state:
-        st.session_state.jump_requested = False
-
     if current >= total:
         st.success("✅ You have completed all articles!")
         st.stop()
@@ -151,7 +148,7 @@ def main():
 
     st.subheader(f"Article {current + 1} of {total}")
     st.number_input(
-        "Navigate Articles",
+        "Jump to Article",
         0, total - 1, current,
         key="nav",
         on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
@@ -174,7 +171,10 @@ def main():
 
         highlighted = highlight_multiple_frames(raw_text, evidence_dict)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
-        st.markdown(highlighted, unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='height:300px; overflow-y: scroll; border:1px solid #ddd; padding:10px'>{highlighted}</div>",
+            unsafe_allow_html=True
+        )
 
     st.markdown("""
     <div style="margin-top: 10px;">
@@ -189,63 +189,53 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    with st.expander("ℹ️ Frame Label Definitions"):
-        st.markdown("""
-        - **Political motive**: Corruption described as driven by political goals.
-        - **Institutional failure**: Emphasizes lack of oversight or governance.
-        - **Individual greed**: Focus on personal financial gain.
-        - **Systemic corruption**: Describes corruption as widespread or normalized.
-        - **External influence**: Foreign actors or pressures involved.
-        - **Civic response**: Focus on public outrage, protests, or activism.
-        - **Legal consequences**: Judicial or legal repercussions.
-        - **No clear frame**: Cannot be categorized confidently.
-        """)
-
     st.markdown("---")
-    st.markdown("**LLM Suggestions**")
-    st.markdown(f"**Rationale:** _{row.get('llm_rationale', '')}_")
+    st.markdown("### 🤖 LLM Rationale")
+    rationale = row.get("llm_rationale", "")
+    st.markdown(highlight_keywords(rationale, KEY_TERMS), unsafe_allow_html=True)
 
-    frame_labels = st.multiselect(
-        "Select all frames that apply to this article:",
-        FRAME_LABELS,
-        key="frame_labels"
-    )
+    st.markdown("### 🏷️ Frame Presence")
+    frame_selections = {}
+    for label in FRAME_LABELS:
+        frame_selections[label] = st.radio(
+            f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio"
+        )
 
-    notes = st.text_area("Comments (optional):", key="notes")
-    flagged = st.checkbox("🚩 Flag this article for review (e.g., low quality, irrelevant, broken translation)", key="flagged")
+    notes = st.text_area("📝 Comments (optional):", key="notes")
+    flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
 
-    if st.button("Next"):
-        entry = {
-            "user_id": user_id,
-            "article_index": current,
-            "frame_labels": "; ".join(frame_labels),
-            "notes": notes,
-            "flagged": str(flagged),
-            "uri": row.get("uri", ""),
-            "original_text": row.get("original_text", ""),
-            "translated_text": row.get("translated_text", "")
-        }
+    col_prev, col_next = st.columns(2)
 
-        existing = sess.get("annotations", [])
-        existing = [a for a in existing if a["article_index"] != current]
-        existing.append(entry)
-        sess["annotations"] = existing
+    with col_prev:
+        if st.button("⬅️ Previous") and current > 0:
+            sess["current_index"] = current - 1
+            save_session(user_id, sess)
+            st.rerun()
 
-        save_annotation(entry)
+    with col_next:
+        if st.button("Next ➡️"):
+            entry = {
+                "user_id": user_id,
+                "article_index": current,
+                "notes": notes,
+                "flagged": str(flagged),
+                "uri": row.get("uri", ""),
+                "original_text": row.get("original_text", ""),
+                "translated_text": row.get("translated_text", "")
+            }
+            for label in FRAME_LABELS:
+                entry[f"{label}_present"] = frame_selections[label]
 
-        sess["current_index"] = current + 1
-        save_session(user_id, sess)
+            existing = sess.get("annotations", [])
+            existing = [a for a in existing if a["article_index"] != current]
+            existing.append(entry)
+            sess["annotations"] = existing
 
-        st.session_state.next_clicked = True
+            save_annotation(entry)
 
-    if st.session_state.next_clicked:
-        st.session_state.next_clicked = False
-        st.rerun()
-
-    if st.session_state.jump_requested:
-        st.session_state.jump_requested = False
-        st.rerun()
+            sess["current_index"] = current + 1
+            save_session(user_id, sess)
+            st.rerun()
 
 if __name__ == "__main__":
     main()
-

@@ -27,13 +27,13 @@ FRAME_LABELS = [
 ]
 
 FRAME_COLORS = {
-    "frame_1_evidence": "#ffe8cc",  # light orange
-    "frame_2_evidence": "#ccf2ff",  # light blue
-    "frame_3_evidence": "#e6ccff",  # light purple
-    "frame_4_evidence": "#d5f5e3",  # light green
-    "frame_5_evidence": "#ffcccc",  # light red
-    "frame_6_evidence": "#ffffcc",  # light yellow
-    "frame_7_evidence": "#f8d7da"   # light pink
+    "frame_1_evidence": "#ffe8cc",
+    "frame_2_evidence": "#ccf2ff",
+    "frame_3_evidence": "#e6ccff",
+    "frame_4_evidence": "#d5f5e3",
+    "frame_5_evidence": "#ffcccc",
+    "frame_6_evidence": "#ffffcc",
+    "frame_7_evidence": "#f8d7da"
 }
 
 @st.cache_data
@@ -189,17 +189,23 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("---")
-    st.markdown("### 🤖 LLM Rationale")
-    rationale = row.get("llm_rationale", "")
-    st.markdown(highlight_keywords(rationale, KEY_TERMS), unsafe_allow_html=True)
-
     st.markdown("### 🏷️ Frame Presence")
     frame_selections = {}
-    for label in FRAME_LABELS:
+    for idx, label in enumerate(FRAME_LABELS):
         frame_selections[label] = st.radio(
             f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio"
         )
+
+        rationale_col = f"frame_{idx+1}_rationale"
+        rationale = row.get(rationale_col, "")
+        if isinstance(rationale, str) and rationale.strip():
+            st.markdown(
+                f"<div style='margin-left: 20px; font-size: 0.9em; color: #333;'>"
+                f"<strong>LLM Rationale:</strong><br>"
+                f"{highlight_keywords(rationale, KEY_TERMS)}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
 
     notes = st.text_area("📝 Comments (optional):", key="notes")
     flagged = st.checkbox("🚩 Flag this article for review", key="flagged")

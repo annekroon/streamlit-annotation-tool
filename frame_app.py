@@ -188,18 +188,22 @@ def main():
         st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
         raw_text = row.get("translated_text", "")
         evidence_dict = {}
+
         for i in range(1, 8):
             col_name = f"frame_{i}_evidence"
             val = row.get(col_name, "")
-            if isinstance(val, str) and val.strip():
-                evidence_dict[col_name] = [e.strip() for e in val.split(";") if e.strip()]
+            val_str = str(val).strip() if pd.notna(val) else ""
+            if val_str:
+                evidence_dict[col_name] = [e.strip() for e in val_str.split(";") if e.strip()]
 
         highlighted = highlight_multiple_frames(raw_text, evidence_dict)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
+
         st.markdown(
-            f"<div style='height:300px; overflow-y: scroll; border:1px solid #ddd; padding:10px'>{highlighted}</div>",
+            f"<div style='border:1px solid #ddd; padding:10px'>{highlighted}</div>",
             unsafe_allow_html=True
         )
+
 
     st.markdown("---")
     st.markdown("### 🧠 Frame-wise Rationale & Evidence Highlights")

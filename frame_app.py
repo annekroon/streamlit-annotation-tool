@@ -226,7 +226,7 @@ def main():
             sess["current_index"] = current - 1
             save_session(user_id, sess)
             st.session_state["jump_requested"] = True
-            st.experimental_rerun()
+            st.rerun()
 
     with col_next:
         if st.button("Next ➡️"):
@@ -255,7 +255,7 @@ def main():
             # Mark reset to happen on next rerun
             st.session_state["reset_frames"] = True
 
-            st.experimental_rerun()
+            st.rerun()
 
 if __name__ == "__main__":
     main()

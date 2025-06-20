@@ -59,7 +59,8 @@ def save_annotation(entry: dict):
         except Exception as e:
             print(f"❌ Error reading local annotation file: {e}")
 
-    annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))]
+    # Remove existing annotation for this user and article_index
+    annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and int(a["article_index"]) == entry["article_index"])]
     annotations.append(entry)
 
     fieldnames = [
@@ -68,7 +69,7 @@ def save_annotation(entry: dict):
     ] + [f"{label}_present" for label in FRAME_LABELS]
 
     try:
-        with open(ANNOTATION_FILE, mode="w", newline="utf-8") as f:
+        with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(annotations)
@@ -80,7 +81,7 @@ def save_annotation(entry: dict):
     try:
         os.makedirs(output_dir, exist_ok=True)
         csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
-        with open(csv_path, mode="w", newline="utf-8") as f:
+        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(annotations)
@@ -103,6 +104,7 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
             if phrase.strip():
                 highlights.append((phrase.strip(), color))
 
+    # Sort phrases by length descending to highlight longer phrases first
     highlights.sort(key=lambda x: -len(x[0]))
 
     parts = re.split(r'(<[^>]+>)', text)
@@ -170,14 +172,17 @@ def main():
     with col2:
         st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
         raw_text = row.get("translated_text", "")
-        evidence_dict = {}
-        for i in range(1, 8):
-            col_name = f"frame_{i}_evidence"
-            val = row.get(col_name, "")
-            if isinstance(val, str) and val.strip():
-                evidence_dict[col_name] = [e.strip() for e in val.split(";") if e.strip()]
 
-        highlighted = highlight_multiple_frames(raw_text, evidence_dict)
+        # Safe extraction and sanitization of evidence fields
+        evidence = {}
+        for i in range(1, 8):
+            raw_val = row.get(f"frame_{i}_evidence", "")
+            if pd.notna(raw_val) and isinstance(raw_val, str):
+                evidence[f"frame_{i}_evidence"] = [e.strip() for e in raw_val.split(";") if e.strip()]
+            else:
+                evidence[f"frame_{i}_evidence"] = []
+
+        highlighted = highlight_multiple_frames(raw_text, evidence)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
         st.markdown(
             f"<div style='height:300px; overflow-y: scroll; border:1px solid #ddd; padding:10px'>{highlighted}</div>",
@@ -205,13 +210,13 @@ def main():
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.rerun()
+            st.experimental_rerun()
 
     with col_next:
         if st.button("Next ➡️"):
             entry = {
                 "user_id": user_id,
-                "article_index": current,
+                "article_index": int(current),  # cast to built-in int here
                 "notes": notes,
                 "flagged": str(flagged),
                 "uri": row.get("uri", ""),
@@ -222,7 +227,8 @@ def main():
                 entry[f"{label}_present"] = frame_selections[label]
 
             existing = sess.get("annotations", [])
-            existing = [a for a in existing if a["article_index"] != current]
+            # Remove existing annotation for this article (ensure int comparison)
+            existing = [a for a in existing if int(a["article_index"]) != current]
             existing.append(entry)
             sess["annotations"] = existing
 
@@ -230,7 +236,7 @@ def main():
 
             sess["current_index"] = current + 1
             save_session(user_id, sess)
-            st.rerun()
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()

@@ -109,19 +109,23 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
             if phrase.strip():
                 highlights.append((phrase.strip(), color))
 
+    # Sort phrases by length (longest first) to avoid nested overlaps
     highlights.sort(key=lambda x: -len(x[0]))
 
-    parts = re.split(r'(<[^>]+>)', text)
+    # Prevent overlapping by replacing only the first occurrence of each
+    parts = re.split(r'(<[^>]+>)', text)  # avoid breaking tags
     for i, part in enumerate(parts):
         if not part.startswith("<"):
             for phrase, color in highlights:
                 pattern = re.compile(re.escape(phrase), re.IGNORECASE)
                 part = pattern.sub(
                     fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
-                    part, count=1
+                    part,
+                    count=1  # highlight only first instance
                 )
             parts[i] = part
     return "".join(parts)
+
 
 def highlight_keywords(text: str, terms: List[str]) -> str:
     parts = re.split(r'(<[^>]+>)', text)
@@ -188,21 +192,20 @@ def main():
         st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
         raw_text = row.get("translated_text", "")
         evidence_dict = {}
-
         for i in range(1, 8):
             col_name = f"frame_{i}_evidence"
             val = row.get(col_name, "")
             val_str = str(val).strip() if pd.notna(val) else ""
             if val_str:
                 evidence_dict[col_name] = [e.strip() for e in val_str.split(";") if e.strip()]
-
+    
         highlighted = highlight_multiple_frames(raw_text, evidence_dict)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
-
         st.markdown(
             f"<div style='border:1px solid #ddd; padding:10px'>{highlighted}</div>",
             unsafe_allow_html=True
         )
+
 
 
     st.markdown("---")

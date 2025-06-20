@@ -3,12 +3,13 @@ import pandas as pd
 import os
 import csv
 import re
+import json
 from typing import List
-import openpyxl
 from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/news_sample_with_7_frames.csv"
+SESSION_DIR = "sessions"
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",
@@ -36,10 +37,6 @@ FRAME_COLORS = {
     "frame_7_evidence": "#f8d7da"
 }
 
-@st.cache_data
-def load_articles():
-    return pd.read_csv(DATA_PATH)
-
 def save_annotation(entry: dict):
     annotations = []
     if os.path.exists(ANNOTATION_FILE):
@@ -50,13 +47,13 @@ def save_annotation(entry: dict):
         except Exception as e:
             print(f"❌ Error reading local annotation file: {e}")
 
-    annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))]
+    annotations = [
+        a for a in annotations
+        if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
+    ]
     annotations.append(entry)
 
-    fieldnames = [
-        'user_id', 'article_index', 'notes', 'flagged',
-        'uri', 'original_text', 'translated_text'
-    ] + [f"{label}_present" for label in FRAME_LABELS]
+    fieldnames = list(entry.keys())
 
     try:
         with open(ANNOTATION_FILE, mode="w", newline="utf-8") as f:
@@ -67,60 +64,41 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing local annotation file: {e}")
 
-    output_dir = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations"
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
-        with open(csv_path, mode="w", newline="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(annotations)
-        print(f"✅ Saved CSV to: {csv_path}")
-
-        excel_path = os.path.join(output_dir, "annotations-fyp-yara.xlsx")
-        df = pd.DataFrame(annotations)
-        df.to_excel(excel_path, index=False)
-        print(f"✅ Saved Excel to: {excel_path}")
-    except Exception as e:
-        print(f"❌ Error saving annotations to shared folder: {e}")
-
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
-
-    highlights = []
     for col, phrases in evidence_dict.items():
+        if not isinstance(phrases, list):
+            continue
         color = FRAME_COLORS.get(col, "#eeeeee")
-        for phrase in phrases:
-            if phrase.strip():
-                highlights.append((phrase.strip(), color))
-
-    highlights.sort(key=lambda x: -len(x[0]))  # prioritize longer matches
-
-    parts = re.split(r'(<[^>]+>)', text)
-    for i, part in enumerate(parts):
-        if not part.startswith("<"):
-            for phrase, color in highlights:
-                pattern = re.compile(re.escape(phrase), re.IGNORECASE)
-                part = pattern.sub(
-                    fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
-                    part, count=1
-                )
-            parts[i] = part
-    return "".join(parts)
+        for hl in phrases:
+            if not isinstance(hl, str) or not hl.strip():
+                continue
+            pattern = re.escape(hl.strip())
+            regex = re.compile(pattern, re.IGNORECASE)
+            text = regex.sub(
+                fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
+                text,
+                count=1
+            )
+    return text
 
 def highlight_keywords(text: str, terms: List[str]) -> str:
     parts = re.split(r'(<[^>]+>)', text)
     for i, part in enumerate(parts):
         if not part.startswith("<"):
             for term in terms:
-                pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+                pattern = re.compile(rf"\\b{re.escape(term)}\\b", re.IGNORECASE)
                 part = pattern.sub(
                     r"<span style='background-color: #cce5ff; padding: 2px; border-radius: 4px;'>\g<0></span>",
                     part
                 )
             parts[i] = part
     return "".join(parts)
+
+@st.cache_data
+def load_articles():
+    return pd.read_csv(DATA_PATH)
 
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
@@ -140,6 +118,11 @@ def main():
     total = len(df)
     current = sess.get("current_index", 0)
 
+    if "next_clicked" not in st.session_state:
+        st.session_state.next_clicked = False
+    if "jump_requested" not in st.session_state:
+        st.session_state.jump_requested = False
+
     if current >= total:
         st.success("✅ You have completed all articles!")
         st.stop()
@@ -148,8 +131,7 @@ def main():
 
     st.subheader(f"Article {current + 1} of {total}")
     st.number_input(
-        "Jump to Article",
-        0, total - 1, current,
+        "Navigate Articles", 0, total - 1, current,
         key="nav",
         on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
     )
@@ -171,77 +153,75 @@ def main():
 
         highlighted = highlight_multiple_frames(raw_text, evidence_dict)
         highlighted = highlight_keywords(highlighted, KEY_TERMS)
-        st.markdown(
-            f"<div style='height:300px; overflow-y: scroll; border:1px solid #ddd; padding:10px'>{highlighted}</div>",
-            unsafe_allow_html=True
-        )
+        st.markdown(highlighted, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div style="margin-top: 10px;">
-        <span style='background-color: #ffe8cc; padding: 2px 6px; border-radius: 4px;'>Frame 1</span>
-        <span style='background-color: #ccf2ff; padding: 2px 6px; border-radius: 4px;'>Frame 2</span>
-        <span style='background-color: #e6ccff; padding: 2px 6px; border-radius: 4px;'>Frame 3</span>
-        <span style='background-color: #d5f5e3; padding: 2px 6px; border-radius: 4px;'>Frame 4</span>
-        <span style='background-color: #ffcccc; padding: 2px 6px; border-radius: 4px;'>Frame 5</span>
-        <span style='background-color: #ffffcc; padding: 2px 6px; border-radius: 4px;'>Frame 6</span>
-        <span style='background-color: #f8d7da; padding: 2px 6px; border-radius: 4px;'>Frame 7</span>
-        <span style='background-color: #cce5ff; padding: 2px 6px; border-radius: 4px;'>Keyword</span>
-    </div>
-    """, unsafe_allow_html=True)
+    with st.expander("ℹ️ Frame Label Definitions"):
+        st.markdown("""
+        - **Political motive**: Corruption described as driven by political goals.
+        - **Institutional failure**: Emphasizes lack of oversight or governance.
+        - **Individual greed**: Focus on personal financial gain.
+        - **Systemic corruption**: Describes corruption as widespread or normalized.
+        - **External influence**: Foreign actors or pressures involved.
+        - **Civic response**: Focus on public outrage, protests, or activism.
+        - **Legal consequences**: Judicial or legal repercussions.
+        - **No clear frame**: Cannot be categorized confidently.
+        """)
 
-    st.markdown("### 🏷️ Frame Presence")
-    frame_selections = {}
-    for idx, label in enumerate(FRAME_LABELS):
-        frame_selections[label] = st.radio(
-            f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio"
-        )
-
-        rationale_col = f"frame_{idx+1}_rationale"
-        rationale = row.get(rationale_col, "")
+    st.markdown("**LLM Rationales for Present Frames**")
+    rationale_dict = {}
+    for i in range(1, 8):
+        rationale = row.get(f"frame_{i}_rationale", "")
         if isinstance(rationale, str) and rationale.strip():
-            st.markdown(
-                f"<div style='margin-left: 20px; font-size: 0.9em; color: #333;'>"
-                f"<strong>LLM Rationale:</strong><br>"
-                f"{highlight_keywords(rationale, KEY_TERMS)}"
-                f"</div>",
-                unsafe_allow_html=True
-            )
+            rationale_dict[f"Frame {i}: {FRAME_LABELS[i-1]}"] = rationale
 
-    notes = st.text_area("📝 Comments (optional):", key="notes")
+    if rationale_dict:
+        for frame_name, rationale in rationale_dict.items():
+            st.markdown(f"**{frame_name}**: _{rationale}_")
+    else:
+        st.markdown("_No rationales available._")
+
+    st.markdown("---")
+
+    frame_selections = {}
+    for label in FRAME_LABELS:
+        frame_selections[label] = st.radio(
+            f"Is '{label}' present?",
+            ["Not present", "Present"],
+            key=label
+        )
+
+    notes = st.text_area("Comments (optional):", key="notes")
     flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
 
-    col_prev, col_next = st.columns(2)
+    if st.button("Next"):
+        entry = {
+            "user_id": user_id,
+            "article_index": current,
+            "notes": notes,
+            "flagged": str(flagged),
+            "uri": row.get("uri", ""),
+            "original_text": row.get("original_text", ""),
+            "translated_text": row.get("translated_text", "")
+        }
+        entry.update({label: frame_selections[label] for label in FRAME_LABELS})
 
-    with col_prev:
-        if st.button("⬅️ Previous") and current > 0:
-            sess["current_index"] = current - 1
-            save_session(user_id, sess)
-            st.rerun()
+        existing = sess.get("annotations", [])
+        existing = [a for a in existing if a["article_index"] != current]
+        existing.append(entry)
+        sess["annotations"] = existing
 
-    with col_next:
-        if st.button("Next ➡️"):
-            entry = {
-                "user_id": user_id,
-                "article_index": current,
-                "notes": notes,
-                "flagged": str(flagged),
-                "uri": row.get("uri", ""),
-                "original_text": row.get("original_text", ""),
-                "translated_text": row.get("translated_text", "")
-            }
-            for label in FRAME_LABELS:
-                entry[f"{label}_present"] = frame_selections[label]
+        save_annotation(entry)
+        sess["current_index"] = current + 1
+        save_session(user_id, sess)
+        st.session_state.next_clicked = True
 
-            existing = sess.get("annotations", [])
-            existing = [a for a in existing if a["article_index"] != current]
-            existing.append(entry)
-            sess["annotations"] = existing
+    if st.session_state.next_clicked:
+        st.session_state.next_clicked = False
+        st.rerun()
 
-            save_annotation(entry)
-
-            sess["current_index"] = current + 1
-            save_session(user_id, sess)
-            st.rerun()
+    if st.session_state.jump_requested:
+        st.session_state.jump_requested = False
+        st.rerun()
 
 if __name__ == "__main__":
     main()

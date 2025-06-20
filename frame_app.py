@@ -105,42 +105,59 @@ def save_annotation(entry: dict):
 def normalize_text(text):
     return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
 
+import difflib
+
+def find_best_substring(text, phrase, max_distance=20):
+    """
+    Find the best approximate match for `phrase` in `text`.
+    Returns the best match if similarity is high enough, else None.
+    """
+    text = html.unescape(text)
+    phrase_norm = normalize_text(phrase)
+    best_match = None
+    best_ratio = 0.0
+
+    for i in range(len(text) - len(phrase)):
+        window = text[i:i + len(phrase) + max_distance]
+        window_norm = normalize_text(window)
+        ratio = difflib.SequenceMatcher(None, phrase_norm, window_norm).ratio()
+        if ratio > best_ratio and ratio > 0.75:
+            best_ratio = ratio
+            best_match = window
+
+    return best_match.strip() if best_match else None
+
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
 
-    original_text = text
-    highlights = []
-    
-    # Preprocess text
-    text_lower = normalize_text(text)
+    replacements = []
+    used_spans = []
 
-    # Collect normalized matches
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
         for phrase in phrases:
-            clean_phrase = normalize_text(phrase)
-            if clean_phrase and clean_phrase in text_lower:
-                # Use exact phrase from original phrase for highlighting (preserve casing)
-                highlights.append((phrase.strip(), color))
+            if not phrase.strip():
+                continue
+            match = find_best_substring(text, phrase)
+            if match and match not in [m[0] for m in replacements]:
+                replacements.append((match, color))
 
-    # Sort by phrase length to avoid nested spans
-    highlights.sort(key=lambda x: -len(x[0]))
+    # Sort to avoid nested highlights
+    replacements.sort(key=lambda x: -len(x[0]))
 
-    for phrase, color in highlights:
-        pattern = re.escape(phrase.strip())
-        try:
-            text = re.sub(
-                pattern,
-                f"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\\g<0></span>",
-                text,
-                count=1,
-                flags=re.IGNORECASE
-            )
-        except re.error:
-            continue  # skip bad patterns
+    for phrase, color in replacements:
+        pattern = re.escape(phrase)
+        text = re.sub(
+            pattern,
+            f"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\\g<0></span>",
+            text,
+            count=1,
+            flags=re.IGNORECASE
+        )
 
     return text
+
 
 
 

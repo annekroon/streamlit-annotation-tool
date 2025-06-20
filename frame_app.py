@@ -4,8 +4,8 @@ import os
 import csv
 import re
 import json
+import numpy as np
 from typing import List
-from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/news_sample_with_7_frames.csv"
@@ -37,6 +37,26 @@ FRAME_COLORS = {
     "frame_7_evidence": "#f8d7da"
 }
 
+def load_session(user_id):
+    path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_session(user_id, session_data):
+    def convert(obj):
+        if isinstance(obj, (np.integer,)):
+            return int(obj)
+        if isinstance(obj, (np.floating,)):
+            return float(obj)
+        if isinstance(obj, (np.ndarray,)):
+            return obj.tolist()
+        raise TypeError(f"Unserializable object {obj} of type {type(obj)}")
+
+    os.makedirs(SESSION_FOLDER, exist_ok=True)
+    path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(session_data, f, indent=2, default=convert)
+
 @st.cache_data
 def load_articles():
     return pd.read_csv(DATA_PATH)
@@ -45,7 +65,6 @@ def fallback_session(user_id):
     return {"user_id": user_id, "current_index": 0, "annotations": []}
 
 def safe_load_session(user_id):
-    # Ensure sessions folder exists
     os.makedirs(SESSION_FOLDER, exist_ok=True)
     try:
         return load_session(user_id)
@@ -78,22 +97,6 @@ def save_annotation(entry: dict):
         print(f"✅ Saved local annotation file: {ANNOTATION_FILE}")
     except Exception as e:
         print(f"❌ Error writing local annotation file: {e}")
-
-    output_dir = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations"
-    try:
-        os.makedirs(output_dir, exist_ok=True)
-        csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
-        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(annotations)
-
-        excel_path = os.path.join(output_dir, "annotations-fyp-yara.xlsx")
-        df = pd.DataFrame(annotations)
-        df.to_excel(excel_path, index=False)
-        print(f"✅ Saved Excel to: {excel_path}")
-    except Exception as e:
-        print(f"❌ Error saving annotations to shared folder: {e}")
 
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
@@ -193,8 +196,7 @@ def main():
     st.markdown(highlight_keywords(rationale, KEY_TERMS), unsafe_allow_html=True)
 
     st.markdown("### 🏷️ Frame Presence")
-    
-    # Initialize frame selections in session_state to "Not Present" if not present
+
     for label in FRAME_LABELS:
         if f"{label}_radio" not in st.session_state:
             st.session_state[f"{label}_radio"] = "Not Present"
@@ -241,7 +243,7 @@ def main():
             sess["current_index"] = current + 1
             save_session(user_id, sess)
 
-            # Reset all frame selections back to "Not Present"
+            # Reset frame selections to "Not Present"
             for label in FRAME_LABELS:
                 st.session_state[f"{label}_radio"] = "Not Present"
             st.session_state["notes"] = ""

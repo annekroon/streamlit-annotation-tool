@@ -208,7 +208,9 @@ def main():
         col_name = f"frame_{i}_evidence"
         frame_label = FRAME_LABELS[i - 1]
         color = FRAME_COLORS.get(col_name, "#eeeeee")
-        evidence_text = row.get(col_name, "").strip()
+        evidence_val = row.get(col_name, "")
+        evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
+
 
         if evidence_text:
             phrases = [p.strip() for p in evidence_text.split(";") if p.strip()]

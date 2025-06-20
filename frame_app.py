@@ -1,227 +1,137 @@
+# This version includes all fixes and restores frame color highlighting + robust JSON loading
+
 import streamlit as st
 import pandas as pd
-import os
-import csv
-import re
 import json
-from typing import List
-from utils.annotation_helpers import load_session, save_session
+import os
+import re
+from annotated_text import annotated_text
+from utils.rationale_generator import generate_frame_rationale
 
-ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "data/news_sample_with_7_frames.csv"
-SESSION_DIR = "sessions"
-
-KEY_TERMS = [
-    "bribery", "embezzlement", "nepotism", "corruption", "fraud",
-    "abuse of power", "favoritism", "money laundering", "kickback", "cronyism"
+FRAME_LIST = [
+    "Economic consequences",
+    "Capacity and resources",
+    "Morality",
+    "Fairness and equality",
+    "Legality, constitutionality and jurisprudence",
+    "Policy prescription and evaluation",
+    "Public opinion"
 ]
 
-FRAME_LABELS = [
-    "Political motive",
-    "Institutional failure",
-    "Individual greed",
-    "Systemic corruption",
-    "External influence",
-    "Civic response",
-    "Legal consequences",
-    "No clear frame"
-]
+LOCAL_SESSION_DIR = ".annotations"
 
-FRAME_COLORS = {
-    "frame_1_evidence": "#ffe8cc",
-    "frame_2_evidence": "#ccf2ff",
-    "frame_3_evidence": "#e6ccff",
-    "frame_4_evidence": "#d5f5e3",
-    "frame_5_evidence": "#ffcccc",
-    "frame_6_evidence": "#ffffcc",
-    "frame_7_evidence": "#f8d7da"
-}
+os.makedirs(LOCAL_SESSION_DIR, exist_ok=True)
 
-def save_annotation(entry: dict):
-    annotations = []
-    if os.path.exists(ANNOTATION_FILE):
+def load_session(user_id):
+    path = os.path.join(LOCAL_SESSION_DIR, f"{user_id}_session.json")
+    if os.path.exists(path):
         try:
-            with open(ANNOTATION_FILE, mode="r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                annotations = list(reader)
-        except Exception as e:
-            print(f"❌ Error reading local annotation file: {e}")
+            with open(path, "r") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            st.warning("Corrupted session file found. Starting with a new session.")
+            return {"annotations": []}
+    else:
+        return {"annotations": []}
 
-    annotations = [
-        a for a in annotations
-        if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
-    ]
-    annotations.append(entry)
+def save_session(user_id, session_data):
+    path = os.path.join(LOCAL_SESSION_DIR, f"{user_id}_session.json")
+    with open(path, "w") as f:
+        json.dump(session_data, f, indent=2, default=str)
 
-    fieldnames = list(entry.keys())
+def color_highlight_text(text, rationale_map):
+    spans = []
+    cursor = 0
 
-    try:
-        with open(ANNOTATION_FILE, mode="w", newline="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(annotations)
-        print(f"✅ Saved local annotation file: {ANNOTATION_FILE}")
-    except Exception as e:
-        print(f"❌ Error writing local annotation file: {e}")
+    color_palette = {
+        "Economic consequences": "#ffadad",
+        "Capacity and resources": "#ffd6a5",
+        "Morality": "#fdffb6",
+        "Fairness and equality": "#caffbf",
+        "Legality, constitutionality and jurisprudence": "#9bf6ff",
+        "Policy prescription and evaluation": "#a0c4ff",
+        "Public opinion": "#bdb2ff"
+    }
 
-def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
-    if not isinstance(text, str):
-        return ""
-    for col, phrases in evidence_dict.items():
-        if not isinstance(phrases, list):
-            continue
-        color = FRAME_COLORS.get(col, "#eeeeee")
-        for hl in phrases:
-            if not isinstance(hl, str) or not hl.strip():
-                continue
-            pattern = re.escape(hl.strip())
-            regex = re.compile(pattern, re.IGNORECASE)
-            text = regex.sub(
-                fr"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\g<0></span>",
-                text,
-                count=1
-            )
-    return text
+    for frame, rationale in rationale_map.items():
+        if rationale:
+            for match in re.finditer(re.escape(rationale), text, re.IGNORECASE):
+                spans.append((match.start(), match.end(), frame))
 
-def highlight_keywords(text: str, terms: List[str]) -> str:
-    parts = re.split(r'(<[^>]+>)', text)
-    for i, part in enumerate(parts):
-        if not part.startswith("<"):
-            for term in terms:
-                pattern = re.compile(rf"\\b{re.escape(term)}\\b", re.IGNORECASE)
-                part = pattern.sub(
-                    r"<span style='background-color: #cce5ff; padding: 2px; border-radius: 4px;'>\g<0></span>",
-                    part
-                )
-            parts[i] = part
-    return "".join(parts)
+    spans.sort()
 
-@st.cache_data
-def load_articles():
-    return pd.read_csv(DATA_PATH)
+    annotated = []
+    last_idx = 0
+    for start, end, frame in spans:
+        if start > last_idx:
+            annotated.append(text[last_idx:start])
+        annotated.append((text[start:end], frame, color_palette[frame]))
+        last_idx = end
 
-def jump_to(index: int, sess, user_id):
-    sess["current_index"] = index
-    save_session(user_id, sess)
-    st.session_state["jump_requested"] = True
+    if last_idx < len(text):
+        annotated.append(text[last_idx:])
+
+    return annotated
 
 def main():
-    st.set_page_config(layout="wide")
-    st.title("📝 Frame Classification Annotation Tool")
+    st.title("News Frame Annotation Tool")
 
-    user_id = st.text_input("Enter your username:")
+    user_id = st.text_input("Enter your name/ID:", value="anon")
     if not user_id:
         st.stop()
 
-    sess = load_session(user_id)
-    df = load_articles()
-    total = len(df)
-    current = sess.get("current_index", 0)
-
-    if "next_clicked" not in st.session_state:
-        st.session_state.next_clicked = False
-    if "jump_requested" not in st.session_state:
-        st.session_state.jump_requested = False
-
-    if current >= total:
-        st.success("✅ You have completed all articles!")
+    uploaded_file = st.file_uploader("Upload the news CSV file", type="csv")
+    if not uploaded_file:
         st.stop()
 
-    row = df.iloc[current]
+    df = pd.read_csv(uploaded_file)
+    if 'content' not in df.columns:
+        st.error("CSV must contain a 'content' column")
+        st.stop()
 
-    st.subheader(f"Article {current + 1} of {total}")
-    st.number_input(
-        "Navigate Articles", 0, total - 1, current,
-        key="nav",
-        on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
-    )
+    sess = load_session(user_id)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Original Text**")
-        st.write(row.get("original_text", ""))
+    if "index" not in sess:
+        sess["index"] = 0
+    if "annotations" not in sess:
+        sess["annotations"] = []
 
-    with col2:
-        st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
-        raw_text = row.get("translated_text", "")
-        evidence_dict = {}
-        for i in range(1, 8):
-            col_name = f"frame_{i}_evidence"
-            val = row.get(col_name, "")
-            if isinstance(val, str) and val.strip():
-                evidence_dict[col_name] = [e.strip() for e in val.split(";") if e.strip()]
+    idx = sess["index"]
+    if idx >= len(df):
+        st.success("Annotation completed 🎉")
+        st.stop()
 
-        highlighted = highlight_multiple_frames(raw_text, evidence_dict)
-        highlighted = highlight_keywords(highlighted, KEY_TERMS)
-        st.markdown(highlighted, unsafe_allow_html=True)
+    row = df.iloc[idx]
+    text = row['content']
 
-    with st.expander("ℹ️ Frame Label Definitions"):
-        st.markdown("""
-        - **Political motive**: Corruption described as driven by political goals.
-        - **Institutional failure**: Emphasizes lack of oversight or governance.
-        - **Individual greed**: Focus on personal financial gain.
-        - **Systemic corruption**: Describes corruption as widespread or normalized.
-        - **External influence**: Foreign actors or pressures involved.
-        - **Civic response**: Focus on public outrage, protests, or activism.
-        - **Legal consequences**: Judicial or legal repercussions.
-        - **No clear frame**: Cannot be categorized confidently.
-        """)
+    st.subheader("Article")
 
-    st.markdown("**LLM Rationales for Present Frames**")
-    rationale_dict = {}
-    for i in range(1, 8):
-        rationale = row.get(f"frame_{i}_rationale", "")
-        if isinstance(rationale, str) and rationale.strip():
-            rationale_dict[f"Frame {i}: {FRAME_LABELS[i-1]}"] = rationale
+    rationale_map = {}
+    for frame in FRAME_LIST:
+        rationale = generate_frame_rationale(text, frame)
+        rationale_map[frame] = rationale
 
-    if rationale_dict:
-        for frame_name, rationale in rationale_dict.items():
-            st.markdown(f"**{frame_name}**: _{rationale}_")
-    else:
-        st.markdown("_No rationales available._")
+    highlighted = color_highlight_text(text, rationale_map)
+    annotated_text(*highlighted)
 
-    st.markdown("---")
+    st.subheader("Frame Presence Annotation")
+    annotation = {"id": int(idx), "frames": {}, "rationales": {}}
 
-    frame_selections = {}
-    for label in FRAME_LABELS:
-        frame_selections[label] = st.radio(
-            f"Is '{label}' present?",
-            ["Not present", "Present"],
-            key=label
-        )
+    for frame in FRAME_LIST:
+        col1, col2 = st.columns([2, 5])
+        with col1:
+            selected = st.selectbox(f"{frame} present?", ["not present", "present"], key=f"sel_{frame}")
+        with col2:
+            rationale_input = st.text_area(f"Optional rationale for {frame}", value=rationale_map[frame], key=f"rat_{frame}")
 
-    notes = st.text_area("Comments (optional):", key="notes")
-    flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
+        annotation["frames"][frame] = selected
+        annotation["rationales"][frame] = rationale_input if selected == "present" else ""
 
     if st.button("Next"):
-        entry = {
-            "user_id": user_id,
-            "article_index": current,
-            "notes": notes,
-            "flagged": str(flagged),
-            "uri": row.get("uri", ""),
-            "original_text": row.get("original_text", ""),
-            "translated_text": row.get("translated_text", "")
-        }
-        entry.update({label: frame_selections[label] for label in FRAME_LABELS})
-
-        existing = sess.get("annotations", [])
-        existing = [a for a in existing if a["article_index"] != current]
-        existing.append(entry)
-        sess["annotations"] = existing
-
-        save_annotation(entry)
-        sess["current_index"] = current + 1
+        sess["annotations"].append(annotation)
+        sess["index"] += 1
         save_session(user_id, sess)
-        st.session_state.next_clicked = True
-
-    if st.session_state.next_clicked:
-        st.session_state.next_clicked = False
-        st.rerun()
-
-    if st.session_state.jump_requested:
-        st.session_state.jump_requested = False
-        st.rerun()
+        st.experimental_rerun()
 
 if __name__ == "__main__":
     main()

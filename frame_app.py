@@ -4,12 +4,12 @@ import os
 import csv
 import re
 import json
-import numpy as np
 from typing import List
+from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/news_sample_with_7_frames.csv"
-SESSION_FOLDER = "sessions"  # folder to save user session files
+SESSION_FOLDER = "sessions"
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",
@@ -37,47 +37,6 @@ FRAME_COLORS = {
     "frame_7_evidence": "#f8d7da"
 }
 
-# --- Session helpers ---
-
-def convert_to_native(obj):
-    if isinstance(obj, dict):
-        return {k: convert_to_native(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [convert_to_native(item) for item in obj]
-    elif isinstance(obj, np.integer):
-        return int(obj)
-    elif isinstance(obj, np.floating):
-        return float(obj)
-    elif isinstance(obj, np.ndarray):
-        return obj.tolist()
-    else:
-        return obj
-
-def save_session(user_id: str, session_data: dict):
-    session_data = convert_to_native(session_data)
-
-    os.makedirs(SESSION_FOLDER, exist_ok=True)
-    session_path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
-
-    try:
-        with open(session_path, "w", encoding="utf-8") as f:
-            json.dump(session_data, f, indent=2)
-        print(f"✅ Session saved locally at: {session_path}")
-    except Exception as e:
-        print(f"❌ Error saving session locally: {e}")
-
-def load_session(user_id: str):
-    session_path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
-    try:
-        with open(session_path, "r", encoding="utf-8") as f:
-            session_data = json.load(f)
-        return session_data
-    except Exception as e:
-        print(f"❌ Error loading session for {user_id}: {e}")
-        return {"user_id": user_id, "current_index": 0, "annotations": []}
-
-# --- Your original functions ---
-
 @st.cache_data
 def load_articles():
     return pd.read_csv(DATA_PATH)
@@ -86,6 +45,8 @@ def fallback_session(user_id):
     return {"user_id": user_id, "current_index": 0, "annotations": []}
 
 def safe_load_session(user_id):
+    # Ensure sessions folder exists
+    os.makedirs(SESSION_FOLDER, exist_ok=True)
     try:
         return load_session(user_id)
     except (json.JSONDecodeError, FileNotFoundError):
@@ -110,7 +71,7 @@ def save_annotation(entry: dict):
     ] + [f"{label}_present" for label in FRAME_LABELS]
 
     try:
-        with open(ANNOTATION_FILE, mode="w", newline="utf-8") as f:
+        with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(annotations)
@@ -118,7 +79,21 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing local annotation file: {e}")
 
-    # Removed shared folder saving here per your request
+    output_dir = "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations"
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+        csv_path = os.path.join(output_dir, "annotations-fyp-yara.csv")
+        with open(csv_path, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(annotations)
+
+        excel_path = os.path.join(output_dir, "annotations-fyp-yara.xlsx")
+        df = pd.DataFrame(annotations)
+        df.to_excel(excel_path, index=False)
+        print(f"✅ Saved Excel to: {excel_path}")
+    except Exception as e:
+        print(f"❌ Error saving annotations to shared folder: {e}")
 
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
@@ -193,7 +168,7 @@ def main():
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Original Text**")
-        st.write(row.get("original_text", ""))
+        st.write(row.get("combined_text", ""))
 
     with col2:
         st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
@@ -218,6 +193,12 @@ def main():
     st.markdown(highlight_keywords(rationale, KEY_TERMS), unsafe_allow_html=True)
 
     st.markdown("### 🏷️ Frame Presence")
+    
+    # Initialize frame selections in session_state to "Not Present" if not present
+    for label in FRAME_LABELS:
+        if f"{label}_radio" not in st.session_state:
+            st.session_state[f"{label}_radio"] = "Not Present"
+
     frame_selections = {}
     for label in FRAME_LABELS:
         frame_selections[label] = st.radio(
@@ -233,7 +214,8 @@ def main():
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.rerun()
+            st.session_state["jump_requested"] = True
+            st.experimental_rerun()
 
     with col_next:
         if st.button("Next ➡️"):
@@ -258,7 +240,14 @@ def main():
 
             sess["current_index"] = current + 1
             save_session(user_id, sess)
-            st.rerun()
+
+            # Reset all frame selections back to "Not Present"
+            for label in FRAME_LABELS:
+                st.session_state[f"{label}_radio"] = "Not Present"
+            st.session_state["notes"] = ""
+            st.session_state["flagged"] = False
+
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()

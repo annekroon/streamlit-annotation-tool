@@ -8,7 +8,7 @@ import openpyxl
 from utils.annotation_helpers import load_session, save_session
 
 ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "data/sample_with_llm_suggestions.csv"
+DATA_PATH = "data/news_sample_with_7_frames.csv"
 
 KEY_TERMS = [
     "bribery", "embezzlement", "nepotism", "corruption", "fraud",

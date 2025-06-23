@@ -107,25 +107,31 @@ def normalize_text(text):
 
 import difflib
 
-def find_best_substring(text, phrase, max_distance=20):
+def find_best_substring(text, phrase, max_distance=30):
     """
-    Find the best approximate match for `phrase` in `text`.
-    Returns the best match if similarity is high enough, else None.
+    Attempt to find a close or exact match for the phrase in the text.
     """
-    text = html.unescape(text)
+    text_unescaped = html.unescape(text)
     phrase_norm = normalize_text(phrase)
+
     best_match = None
     best_ratio = 0.0
 
-    for i in range(len(text) - len(phrase)):
-        window = text[i:i + len(phrase) + max_distance]
+    # Token-based search fallback
+    for i in range(len(text_unescaped) - len(phrase)):
+        window = text_unescaped[i:i + len(phrase) + max_distance]
         window_norm = normalize_text(window)
         ratio = difflib.SequenceMatcher(None, phrase_norm, window_norm).ratio()
-        if ratio > best_ratio and ratio > 0.75:
+        if ratio > best_ratio and ratio > 0.7:
             best_ratio = ratio
             best_match = window
 
+    # Try exact match as a last resort
+    if not best_match and phrase in text_unescaped:
+        return phrase
+
     return best_match.strip() if best_match else None
+
 
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):

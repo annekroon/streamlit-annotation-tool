@@ -137,30 +137,30 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
 
+    text = html.unescape(text)
     replacements = []
-    used_spans = []
+    spans = []
 
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
         for phrase in phrases:
-            if not phrase.strip():
+            phrase = phrase.strip()
+            if not phrase:
                 continue
-            match = find_best_substring(text, phrase)
-            if match and match not in [m[0] for m in replacements]:
-                replacements.append((match, color))
 
-    # Sort to avoid nested highlights
-    replacements.sort(key=lambda x: -len(x[0]))
+            pattern = re.escape(phrase)
+            regex = re.compile(pattern, re.IGNORECASE)
+            for match in regex.finditer(text):
+                start, end = match.span()
+                if all(end <= s or start >= e for s, e in spans):  # Avoid overlaps
+                    spans.append((start, end))
+                    replacements.append((start, end, color))
+                    break
 
-    for phrase, color in replacements:
-        pattern = re.escape(phrase)
-        text = re.sub(
-            pattern,
-            f"<span style='background-color: {color}; padding: 2px; border-radius: 4px;'>\\g<0></span>",
-            text,
-            count=1,
-            flags=re.IGNORECASE
-        )
+    # Sort in reverse to safely insert HTML tags
+    for start, end, color in sorted(replacements, key=lambda x: -x[0]):
+        span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
+        text = text[:start] + span_html + text[end:]
 
     return text
 

@@ -244,29 +244,34 @@ def main():
 
 
     st.markdown("---")
-    st.markdown("### 🧠 Frame-wise Rationale & Evidence Highlights")
-
+    st.markdown("### 🧠 Frame-wise rationale & evidence highlights")
     for i in range(1, 8):
         col_name = f"frame_{i}_evidence"
+        rationale_col = f"frame_{i}_rationale"
         frame_label = FRAME_LABELS[i - 1]
         color = FRAME_COLORS.get(col_name, "#eeeeee")
+    
         evidence_val = row.get(col_name, "")
+        rationale_val = row.get(rationale_col, "")
+    
         evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
+        rationale_text = str(rationale_val).strip() if pd.notna(rationale_val) else ""
+    
+        phrases = [p.strip() for p in evidence_text.split(";") if p.strip()] if evidence_text else []
+    
+        if evidence_text or rationale_text:
+            st.markdown(
+                f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
+                f"background-color:{color}33;'>"
+                f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
+                f"<i><u>Rationale:</u></i><br> {rationale_text or '—'}<br><br>"
+                f"<i><u>Evidence Phrases:</u></i> {', '.join(phrases) if phrases else '—'}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
 
 
-        if evidence_text:
-            phrases = [p.strip() for p in evidence_text.split(";") if p.strip()]
-            if phrases:
-                st.markdown(
-                    f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
-                    f"background-color:{color}33;'>"
-                    f"<b style='color:{color};'>🟩 {frame_label}</b><br>"
-                    f"<i>Evidence Phrases:</i> {', '.join(phrases)}"
-                    f"</div>",
-                    unsafe_allow_html=True
-                )
-
-    st.markdown("### 🏷️ Frame Presence")
+    st.markdown("### 🏷️ Frame presence")
 
     frame_selections = {}
     for label in FRAME_LABELS:

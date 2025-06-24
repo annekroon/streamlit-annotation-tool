@@ -19,25 +19,25 @@ KEY_TERMS = [
 ]
 
 FRAME_LABELS = [
-    "Political motive",
-    "Institutional failure",
-    "Individual greed",
-    "Systemic corruption",
-    "External influence",
-    "Civic response",
-    "Legal consequences",
-    "No clear frame"
+    "Foreign influence threat",
+    "Systemic institutional corruption",
+    "Elite collusion",
+    "Politicized investigations",
+    "Authoritarian overreach",
+    "Judicial loopholes enabling corruption",
+    "Public outrage and call for reform"
 ]
 
 FRAME_COLORS = {
-    "frame_1_evidence": "#ffe8cc",
-    "frame_2_evidence": "#ccf2ff",
-    "frame_3_evidence": "#e6ccff",
-    "frame_4_evidence": "#d5f5e3",
-    "frame_5_evidence": "#ffcccc",
-    "frame_6_evidence": "#ffffcc",
-    "frame_7_evidence": "#f8d7da"
+    "frame_1_evidence": "#cce5ff",  # Foreign influence threat
+    "frame_2_evidence": "#d5f5e3",  # Systemic institutional corruption
+    "frame_3_evidence": "#e6ccff",  # Elite collusion
+    "frame_4_evidence": "#ffe8cc",  # Politicized investigations
+    "frame_5_evidence": "#ffcccc",  # Authoritarian overreach
+    "frame_6_evidence": "#f8d7da",  # Judicial loopholes enabling corruption
+    "frame_7_evidence": "#ffffcc",  # Public outrage and call for reform
 }
+
 
 def load_session(user_id):
     path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")

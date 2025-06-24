@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import os
 import csv
-import re
+import regex as re
 import json
 import numpy as np
 from typing import List

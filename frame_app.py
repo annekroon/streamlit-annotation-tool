@@ -105,49 +105,45 @@ def normalize_text(text):
 import unicodedata
 import regex as re  # use `regex` instead of `re` for better Unicode handling
 
+import regex
+
+def phrase_to_flexible_regex(phrase: str) -> str:
+    """Generate a fuzzy regex pattern from the phrase to tolerate spacing and punctuation."""
+    words = phrase.strip().split()
+    pattern = r'\b' + r'\W*'.join(map(re.escape, words)) + r'\b'
+    return pattern
+
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
 
-    text = unicodedata.normalize("NFKC", html.unescape(text))
+    text = html.unescape(text)
     replacements = []
     spans = []
 
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
-
         for phrase in phrases:
-            # Normalize and strip each phrase
-            phrase_clean = unicodedata.normalize("NFKC", phrase.strip())
-            if not phrase_clean:
+            if not phrase:
                 continue
 
-            # Make a loose regex pattern that allows for minor punctuation/spacing differences
-            pattern = r"\b" + re.escape(phrase_clean).replace(r"\ ", r"\s*").replace(r"\-", r"[-\s]*") + r"\b"
-            regex_pattern = re.compile(pattern, re.IGNORECASE)
+            pattern = phrase_to_flexible_regex(phrase)
+            matches = list(regex.finditer(pattern, text, flags=regex.IGNORECASE))
 
-            found = False
-            for match in regex_pattern.finditer(text):
+            for match in matches:
                 start, end = match.span()
-                # Avoid overlapping spans
                 if all(end <= s or start >= e for s, e in spans):
                     spans.append((start, end))
                     replacements.append((start, end, color))
-                    found = True
-                    break
+                    break  # Only highlight once
 
-            # Debug print (shows in terminal)
-            print(f"🔍 Phrase: '{phrase_clean}' | Found: {'✅' if found else '❌'}")
-
-    # Perform replacements from the end to avoid offset issues
+    # Apply replacements from end to start
     for start, end, color in sorted(replacements, key=lambda x: -x[0]):
-        span_html = (
-            f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>"
-            f"{html.escape(text[start:end])}</span>"
-        )
+        span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
         text = text[:start] + span_html + text[end:]
 
     return text
+
 
 def highlight_keywords(text: str, terms: List[str]) -> str:
     parts = re.split(r'(<[^>]+>)', text)

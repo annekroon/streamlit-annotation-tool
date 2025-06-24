@@ -29,15 +29,14 @@ FRAME_LABELS = [
 ]
 
 FRAME_COLORS = {
-    "frame_1_evidence": "#cce5ff",  # Foreign influence threat
-    "frame_2_evidence": "#d5f5e3",  # Systemic institutional corruption
-    "frame_3_evidence": "#e6ccff",  # Elite collusion
-    "frame_4_evidence": "#ffe8cc",  # Politicized investigations
-    "frame_5_evidence": "#ffcccc",  # Authoritarian overreach
-    "frame_6_evidence": "#f8d7da",  # Judicial loopholes enabling corruption
-    "frame_7_evidence": "#ffffcc",  # Public outrage and call for reform
+    "frame_1_evidence": "#cce5ff",
+    "frame_2_evidence": "#d5f5e3",
+    "frame_3_evidence": "#e6ccff",
+    "frame_4_evidence": "#ffe8cc",
+    "frame_5_evidence": "#ffcccc",
+    "frame_6_evidence": "#f8d7da",
+    "frame_7_evidence": "#ffffcc",
 }
-
 
 def load_session(user_id):
     path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
@@ -100,38 +99,8 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing local annotation file: {e}")
 
-
-
 def normalize_text(text):
     return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
-
-import difflib
-
-def find_best_substring(text, phrase, max_distance=30):
-    """
-    Attempt to find a close or exact match for the phrase in the text.
-    """
-    text_unescaped = html.unescape(text)
-    phrase_norm = normalize_text(phrase)
-
-    best_match = None
-    best_ratio = 0.0
-
-    # Token-based search fallback
-    for i in range(len(text_unescaped) - len(phrase)):
-        window = text_unescaped[i:i + len(phrase) + max_distance]
-        window_norm = normalize_text(window)
-        ratio = difflib.SequenceMatcher(None, phrase_norm, window_norm).ratio()
-        if ratio > best_ratio and ratio > 0.7:
-            best_ratio = ratio
-            best_match = window
-
-    # Try exact match as a last resort
-    if not best_match and phrase in text_unescaped:
-        return phrase
-
-    return best_match.strip() if best_match else None
-
 
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
@@ -152,29 +121,25 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
             regex = re.compile(pattern, re.IGNORECASE)
             for match in regex.finditer(text):
                 start, end = match.span()
-                if all(end <= s or start >= e for s, e in spans):  # Avoid overlaps
+                if all(end <= s or start >= e for s, e in spans):
                     spans.append((start, end))
                     replacements.append((start, end, color))
                     break
 
-    # Sort in reverse to safely insert HTML tags
     for start, end, color in sorted(replacements, key=lambda x: -x[0]):
         span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
         text = text[:start] + span_html + text[end:]
 
     return text
 
-
-
-
 def highlight_keywords(text: str, terms: List[str]) -> str:
     parts = re.split(r'(<[^>]+>)', text)
     for i, part in enumerate(parts):
         if not part.startswith("<"):
             for term in terms:
-                pattern = re.compile(rf"\b{re.escape(term)}\b", re.IGNORECASE)
+                pattern = re.compile(rf"\\b{re.escape(term)}\\b", re.IGNORECASE)
                 part = pattern.sub(
-                    r"<span style='background-color: #cce5ff; padding: 2px; border-radius: 4px;'>\g<0></span>",
+                    r"<span style='background-color: #cce5ff; padding: 2px; border-radius: 4px;'>\\g<0></span>",
                     part
                 )
             parts[i] = part
@@ -183,7 +148,7 @@ def highlight_keywords(text: str, terms: List[str]) -> str:
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
     save_session(user_id, sess)
-    st.session_state["jump_requested"] = True
+    st.rerun()
 
 def main():
     st.set_page_config(layout="wide")
@@ -238,16 +203,15 @@ def main():
             val_str = str(val).strip() if pd.notna(val) else ""
             if val_str:
                 evidence_dict[col_name] = [e.strip() for e in val_str.split(";") if e.strip()]
-    
-        highlighted = highlight_multiple_frames(raw_text, evidence_dict)
-        highlighted = highlight_keywords(highlighted, KEY_TERMS)
+
+        base_text = html.unescape(raw_text)
+        highlighted_evidence = highlight_multiple_frames(base_text, evidence_dict)
+        highlighted_full = highlight_keywords(highlighted_evidence, KEY_TERMS)
+
         st.markdown(
-            f"<div style='border:1px solid #ddd; padding:10px; overflow:visible;'>{highlighted}</div>",
+            f"<div style='border:1px solid #ddd; padding:10px; overflow:visible;'>{highlighted_full}</div>",
             unsafe_allow_html=True
         )
-
-
-
 
     st.markdown("---")
     st.markdown("### 🧠 Frame-wise rationale & evidence highlights")
@@ -256,15 +220,15 @@ def main():
         rationale_col = f"frame_{i}_rationale"
         frame_label = FRAME_LABELS[i - 1]
         color = FRAME_COLORS.get(col_name, "#eeeeee")
-    
+
         evidence_val = row.get(col_name, "")
         rationale_val = row.get(rationale_col, "")
-    
+
         evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
         rationale_text = str(rationale_val).strip() if pd.notna(rationale_val) else ""
-    
+
         phrases = [p.strip() for p in evidence_text.split(";") if p.strip()] if evidence_text else []
-    
+
         if evidence_text or rationale_text:
             st.markdown(
                 f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
@@ -276,9 +240,7 @@ def main():
                 unsafe_allow_html=True
             )
 
-
     st.markdown("### 🏷️ Frame presence")
-
     frame_selections = {}
     for label in FRAME_LABELS:
         frame_selections[label] = st.radio(
@@ -289,12 +251,11 @@ def main():
     flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
 
     col_prev, col_next = st.columns(2)
-
     with col_prev:
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.session_state["jump_requested"] = True
+            st.session_state["reset_frames"] = True
             st.rerun()
 
     with col_next:
@@ -317,7 +278,6 @@ def main():
             sess["annotations"] = existing
 
             save_annotation(entry)
-
             sess["current_index"] = current + 1
             save_session(user_id, sess)
             st.session_state["reset_frames"] = True

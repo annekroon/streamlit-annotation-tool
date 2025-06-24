@@ -118,58 +118,36 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
         return ""
 
     text = html.unescape(text)
-    lowered_text = text.lower()
-    tokens = regex.findall(r'\w+|\W+', lowered_text)
-    original_tokens = regex.findall(r'\w+|\W+', text)
-
-    token_starts = []
-    idx = 0
-    for tok in original_tokens:
-        token_starts.append(idx)
-        idx += len(tok)
-
-    spans = []
-    replacements = []
+    highlights = []
 
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
         for phrase in phrases:
-            phrase_words = regex.findall(r'\w+', phrase.lower())
-            if not phrase_words:
+            if not phrase:
                 continue
+            try:
+                pattern = phrase_to_flexible_regex(phrase)
+                for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+                    start, end = match.start(), match.end()
+                    highlights.append((start, end, color))
+            except Exception as e:
+                print(f"Regex error with phrase '{phrase}': {e}")
 
-            phrase_len = len(phrase_words)
-            if phrase_len == 0:
-                continue
+    # Remove overlaps, prioritize earliest first
+    highlights = sorted(highlights, key=lambda x: x[0])
+    final_spans = []
+    last_end = -1
+    for start, end, color in highlights:
+        if start >= last_end:
+            final_spans.append((start, end, color))
+            last_end = end
 
-            for i in range(len(tokens) - phrase_len):
-                window = tokens[i:i + phrase_len + 6]  # allow some padding
-                window_words = [w for w in window if w.strip().isalnum()]
-                match_count = 0
-                pi = 0  # phrase index
-                wi = 0  # window index
-
-                while pi < phrase_len and wi < len(window_words):
-                    if window_words[wi] == phrase_words[pi]:
-                        match_count += 1
-                        pi += 1
-                    wi += 1
-
-                match_ratio = match_count / phrase_len
-                if match_ratio >= 0.7:
-                    start_char = token_starts[i]
-                    end_char = token_starts[min(i + phrase_len + 6, len(token_starts)-1)]
-                    if all(end_char <= s or start_char >= e for s, e in spans):
-                        spans.append((start_char, end_char))
-                        replacements.append((start_char, end_char, color))
-                        break  # Highlight once per phrase
-
-    for start, end, color in sorted(replacements, key=lambda x: -x[0]):
+    # Apply highlights from back to front
+    for start, end, color in reversed(final_spans):
         span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
         text = text[:start] + span_html + text[end:]
 
     return text
-
 
 
 def highlight_keywords(text: str, terms: List[str]) -> str:

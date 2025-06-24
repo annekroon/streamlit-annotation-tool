@@ -102,32 +102,49 @@ def save_annotation(entry: dict):
 def normalize_text(text):
     return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
 
+import unicodedata
+import regex as re  # use `regex` instead of `re` for better Unicode handling
+
 def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     if not isinstance(text, str):
         return ""
 
-    text = html.unescape(text)
+    text = unicodedata.normalize("NFKC", html.unescape(text))
     replacements = []
     spans = []
 
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
+
         for phrase in phrases:
-            phrase = phrase.strip()
-            if not phrase:
+            # Normalize and strip each phrase
+            phrase_clean = unicodedata.normalize("NFKC", phrase.strip())
+            if not phrase_clean:
                 continue
 
-            pattern = re.escape(phrase)
-            regex = re.compile(pattern, re.IGNORECASE)
-            for match in regex.finditer(text):
+            # Make a loose regex pattern that allows for minor punctuation/spacing differences
+            pattern = r"\b" + re.escape(phrase_clean).replace(r"\ ", r"\s*").replace(r"\-", r"[-\s]*") + r"\b"
+            regex_pattern = re.compile(pattern, re.IGNORECASE)
+
+            found = False
+            for match in regex_pattern.finditer(text):
                 start, end = match.span()
+                # Avoid overlapping spans
                 if all(end <= s or start >= e for s, e in spans):
                     spans.append((start, end))
                     replacements.append((start, end, color))
+                    found = True
                     break
 
+            # Debug print (shows in terminal)
+            print(f"🔍 Phrase: '{phrase_clean}' | Found: {'✅' if found else '❌'}")
+
+    # Perform replacements from the end to avoid offset issues
     for start, end, color in sorted(replacements, key=lambda x: -x[0]):
-        span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
+        span_html = (
+            f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>"
+            f"{html.escape(text[start:end])}</span>"
+        )
         text = text[:start] + span_html + text[end:]
 
     return text

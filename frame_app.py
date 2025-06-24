@@ -105,7 +105,6 @@ def normalize_text(text):
 import unicodedata
 import regex as re  # use `regex` instead of `re` for better Unicode handling
 
-import regex
 
 def phrase_to_flexible_regex(phrase: str) -> str:
     """Generate a fuzzy regex pattern from the phrase to tolerate spacing and punctuation."""
@@ -122,6 +121,12 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
     tokens = regex.findall(r'\w+|\W+', lowered_text)
     original_tokens = regex.findall(r'\w+|\W+', text)
 
+    token_starts = []
+    idx = 0
+    for tok in original_tokens:
+        token_starts.append(idx)
+        idx += len(tok)
+
     spans = []
     replacements = []
 
@@ -132,32 +137,32 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
             if not phrase_words:
                 continue
 
-            window_size = len(phrase_words) + 5  # allow up to 5 extra tokens
-            for i in range(len(tokens) - len(phrase_words)):
-                window = tokens[i:i + window_size]
+            phrase_len = len(phrase_words)
+            if phrase_len == 0:
+                continue
+
+            for i in range(len(tokens) - phrase_len):
+                window = tokens[i:i + phrase_len + 6]  # allow some padding
                 window_words = [w for w in window if w.strip().isalnum()]
                 match_count = 0
-                idx = 0
+                pi = 0  # phrase index
+                wi = 0  # window index
 
-                for pw in phrase_words:
-                    while idx < len(window_words) and window_words[idx] != pw:
-                        idx += 1
-                    if idx < len(window_words):
+                while pi < phrase_len and wi < len(window_words):
+                    if window_words[wi] == phrase_words[pi]:
                         match_count += 1
-                        idx += 1
-                    else:
-                        break
+                        pi += 1
+                    wi += 1
 
-                match_ratio = match_count / len(phrase_words)
-                if match_ratio >= 0.7:  # accept partial fuzzy match
-                    start_char = sum(len(tok) for tok in tokens[:i])
-                    end_char = start_char + sum(len(tok) for tok in window)
+                match_ratio = match_count / phrase_len
+                if match_ratio >= 0.7:
+                    start_char = token_starts[i]
+                    end_char = token_starts[min(i + phrase_len + 6, len(token_starts)-1)]
                     if all(end_char <= s or start_char >= e for s, e in spans):
                         spans.append((start_char, end_char))
                         replacements.append((start_char, end_char, color))
-                        break
+                        break  # Highlight once per phrase
 
-    # Apply replacements from end to start
     for start, end, color in sorted(replacements, key=lambda x: -x[0]):
         span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
         text = text[:start] + span_html + text[end:]

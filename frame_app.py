@@ -118,24 +118,44 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
         return ""
 
     text = html.unescape(text)
-    replacements = []
+    lowered_text = text.lower()
+    tokens = regex.findall(r'\w+|\W+', lowered_text)
+    original_tokens = regex.findall(r'\w+|\W+', text)
+
     spans = []
+    replacements = []
 
     for col, phrases in evidence_dict.items():
         color = FRAME_COLORS.get(col, "#eeeeee")
         for phrase in phrases:
-            if not phrase:
+            phrase_words = regex.findall(r'\w+', phrase.lower())
+            if not phrase_words:
                 continue
 
-            pattern = phrase_to_flexible_regex(phrase)
-            matches = list(regex.finditer(pattern, text, flags=regex.IGNORECASE))
+            window_size = len(phrase_words) + 5  # allow up to 5 extra tokens
+            for i in range(len(tokens) - len(phrase_words)):
+                window = tokens[i:i + window_size]
+                window_words = [w for w in window if w.strip().isalnum()]
+                match_count = 0
+                idx = 0
 
-            for match in matches:
-                start, end = match.span()
-                if all(end <= s or start >= e for s, e in spans):
-                    spans.append((start, end))
-                    replacements.append((start, end, color))
-                    break  # Only highlight once
+                for pw in phrase_words:
+                    while idx < len(window_words) and window_words[idx] != pw:
+                        idx += 1
+                    if idx < len(window_words):
+                        match_count += 1
+                        idx += 1
+                    else:
+                        break
+
+                match_ratio = match_count / len(phrase_words)
+                if match_ratio >= 0.7:  # accept partial fuzzy match
+                    start_char = sum(len(tok) for tok in tokens[:i])
+                    end_char = start_char + sum(len(tok) for tok in window)
+                    if all(end_char <= s or start_char >= e for s, e in spans):
+                        spans.append((start_char, end_char))
+                        replacements.append((start_char, end_char, color))
+                        break
 
     # Apply replacements from end to start
     for start, end, color in sorted(replacements, key=lambda x: -x[0]):
@@ -143,6 +163,7 @@ def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
         text = text[:start] + span_html + text[end:]
 
     return text
+
 
 
 def highlight_keywords(text: str, terms: List[str]) -> str:

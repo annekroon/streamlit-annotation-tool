@@ -98,12 +98,19 @@ def main():
     st.set_page_config(layout="wide")
     st.title("📝 Corruption Frame Annotation Tool")
 
-    user_id = st.selectbox(
-        "Select your username:",
-        ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne"]
-    )
+    # Show welcome screen if no user ID is selected yet
+    if "user_id" not in st.session_state:
+        user_id = st.selectbox(
+            "Select your username:",
+            ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne"]
+        )
+        if st.button("Start annotating"):
+            st.session_state["user_id"] = user_id
+            st.rerun()
+        st.stop()
 
-
+    # Load session and continue with annotation UI
+    user_id = st.session_state["user_id"]
     sess = safe_load_session(user_id)
     df = load_articles()
     total = len(df)

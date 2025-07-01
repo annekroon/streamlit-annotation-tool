@@ -113,60 +113,6 @@ def phrase_to_flexible_regex(phrase: str) -> str:
     pattern = r'\b' + r'\W*'.join(map(re.escape, words)) + r'\b'
     return pattern
 
-def highlight_multiple_frames(text: str, evidence_dict: dict) -> str:
-    if not isinstance(text, str):
-        return ""
-
-    text = html.unescape(text)
-    highlights = []
-
-    for col, phrases in evidence_dict.items():
-        color = FRAME_COLORS.get(col, "#eeeeee")
-        for phrase in phrases:
-            if not phrase:
-                continue
-            try:
-                pattern = phrase_to_flexible_regex(phrase)
-                for match in re.finditer(pattern, text, flags=re.IGNORECASE):
-                    start, end = match.start(), match.end()
-                    highlights.append((start, end, color))
-            except Exception as e:
-                print(f"Regex error with phrase '{phrase}': {e}")
-
-    # Remove overlaps, prioritize earliest first
-    highlights = sorted(highlights, key=lambda x: x[0])
-    final_spans = []
-    last_end = -1
-    for start, end, color in highlights:
-        if start >= last_end:
-            final_spans.append((start, end, color))
-            last_end = end
-
-    # Apply highlights from back to front
-    for start, end, color in reversed(final_spans):
-        span_html = f"<span style='background-color: {color}; padding:2px; border-radius:4px;'>{html.escape(text[start:end])}</span>"
-        text = text[:start] + span_html + text[end:]
-
-    return text
-
-def highlight_keywords(text: str, terms: List[str]) -> str:
-    parts = re.split(r'(<[^>]+>)', text)
-    for i, part in enumerate(parts):
-        if not part.startswith("<"):
-            for term in terms:
-                pattern = re.compile(rf"\\b{re.escape(term)}\\b", re.IGNORECASE)
-                part = pattern.sub(
-                    r"<span style='background-color: #cce5ff; padding: 2px; border-radius: 4px;'>\\g<0></span>",
-                    part
-                )
-            parts[i] = part
-    return "".join(parts)
-
-def jump_to(index: int, sess, user_id):
-    sess["current_index"] = index
-    save_session(user_id, sess)
-    st.rerun()
-
 def main():
     st.set_page_config(layout="wide")
     st.title("📝 Frame Classification Annotation Tool")
@@ -202,7 +148,6 @@ def main():
         st.session_state["flagged"] = False
         st.session_state["reset_frames"] = False
 
-    # Initialize frame radios if missing
     for label in FRAME_LABELS:
         if f"{label}_radio" not in st.session_state:
             st.session_state[f"{label}_radio"] = "Not Present"
@@ -213,24 +158,8 @@ def main():
         st.write(row.get("combined_text", ""))
 
     with col2:
-        st.markdown("**Translated Text with Highlights**", unsafe_allow_html=True)
-        raw_text = row.get("translated_text", "")
-        evidence_dict = {}
-        for i in range(1, 8):
-            col_name = f"frame_{i}_evidence"
-            val = row.get(col_name, "")
-            val_str = str(val).strip() if pd.notna(val) else ""
-            if val_str:
-                evidence_dict[col_name] = [e.strip() for e in val_str.split(";") if e.strip()]
-
-        base_text = html.unescape(raw_text)
-        highlighted_evidence = highlight_multiple_frames(base_text, evidence_dict)
-        highlighted_full = highlight_keywords(highlighted_evidence, KEY_TERMS)
-
-        st.markdown(
-            f"<div style='border:1px solid #ddd; padding:10px; overflow:visible;'>{highlighted_full}</div>",
-            unsafe_allow_html=True
-        )
+        st.markdown("**Translated Text**")
+        st.write(row.get("translated_text", ""))
 
     st.markdown("---")
     st.markdown("### 🧠 Frame-wise rationale & evidence highlights")
@@ -250,13 +179,9 @@ def main():
 
         if evidence_text or rationale_text:
             st.markdown(
-                f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
-                f"background-color:{color}33;'>"
-                f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
-                f"<i><u>Rationale:</u></i><br> {rationale_text or '—'}<br><br>"
-                f"<i><u>Evidence Phrases:</u></i> {', '.join(phrases) if phrases else '—'}"
-                f"</div>",
-                unsafe_allow_html=True
+                f"**🟩 {frame_label}**\n\n"
+                f"- *Rationale:* {rationale_text or '—'}\n"
+                f"- *Evidence Phrases:* {', '.join(phrases) if phrases else '—'}"
             )
 
     st.markdown("### 🏷️ Frame presence")
@@ -292,7 +217,6 @@ def main():
                 entry[f"{label}_present"] = frame_selections[label]
 
             existing = sess.get("annotations", [])
-            # Remove previous annotation for current article
             existing = [a for a in existing if a["article_index"] != current]
             existing.append(entry)
             sess["annotations"] = existing
@@ -303,5 +227,3 @@ def main():
             st.session_state["reset_frames"] = True
             st.rerun()
 
-if __name__ == "__main__":
-    main()

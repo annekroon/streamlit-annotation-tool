@@ -2,23 +2,17 @@ import streamlit as st
 import pandas as pd
 import os
 import csv
-import regex as re
 import json
 import numpy as np
 from typing import List
-import html
 import string
-import unicodedata
 
+# === File paths ===
 ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/news_sample_with_7_frames.csv"
 SESSION_FOLDER = "sessions"
 
-KEY_TERMS = [
-    "bribery", "embezzlement", "nepotism", "corruption", "fraud",
-    "abuse of power", "favoritism", "money laundering", "kickback", "cronyism"
-]
-
+# === Frame labels ===
 FRAME_LABELS = [
     "Foreign influence threat",
     "Systemic institutional corruption",
@@ -29,16 +23,7 @@ FRAME_LABELS = [
     "Mobilizing anti-corruption"
 ]
 
-FRAME_COLORS = {
-    "frame_1_evidence": "#cce5ff",
-    "frame_2_evidence": "#d5f5e3",
-    "frame_3_evidence": "#e6ccff",
-    "frame_4_evidence": "#ffe8cc",
-    "frame_5_evidence": "#ffcccc",
-    "frame_6_evidence": "#f8d7da",
-    "frame_7_evidence": "#ffffcc",
-}
-
+# === Load/save session ===
 def load_session(user_id):
     path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
     with open(path, "r", encoding="utf-8") as f:
@@ -59,6 +44,7 @@ def save_session(user_id, session_data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(session_data, f, indent=2, default=convert)
 
+# === Load articles ===
 @st.cache_data
 def load_articles():
     return pd.read_csv(DATA_PATH)
@@ -73,6 +59,7 @@ def safe_load_session(user_id):
     except (json.JSONDecodeError, FileNotFoundError):
         return fallback_session(user_id)
 
+# === Save annotation to CSV ===
 def save_annotation(entry: dict):
     annotations = []
     if os.path.exists(ANNOTATION_FILE):
@@ -81,9 +68,9 @@ def save_annotation(entry: dict):
                 reader = csv.DictReader(f)
                 annotations = list(reader)
         except Exception as e:
-            print(f"❌ Error reading local annotation file: {e}")
+            print(f"❌ Error reading annotation file: {e}")
 
-    # Remove any previous annotation by this user for this article
+    # Remove existing for the same user/article
     annotations = [
         a for a in annotations
         if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
@@ -100,25 +87,17 @@ def save_annotation(entry: dict):
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(annotations)
-        print(f"✅ Saved local annotation file: {ANNOTATION_FILE}")
     except Exception as e:
-        print(f"❌ Error writing local annotation file: {e}")
+        print(f"❌ Error writing annotation file: {e}")
 
-def normalize_text(text):
-    return text.lower().translate(str.maketrans('', '', string.punctuation)).strip()
-
-def phrase_to_flexible_regex(phrase: str) -> str:
-    """Generate a fuzzy regex pattern from the phrase to tolerate spacing and punctuation."""
-    words = phrase.strip().split()
-    pattern = r'\b' + r'\W*'.join(map(re.escape, words)) + r'\b'
-    return pattern
-
+# === Streamlit UI ===
 def main():
     st.set_page_config(layout="wide")
     st.title("📝 Frame Classification Annotation Tool")
 
     user_id = st.text_input("Enter your username:")
     if not user_id:
+        st.info("Please enter your username to continue.")
         st.stop()
 
     sess = safe_load_session(user_id)
@@ -133,24 +112,6 @@ def main():
     row = df.iloc[current]
 
     st.subheader(f"Article {current + 1} of {total}")
-    st.number_input(
-        "Jump to Article",
-        0, total - 1, current,
-        key="nav",
-        on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
-    )
-
-    # Reset frames if requested
-    if st.session_state.get("reset_frames", False):
-        for label in FRAME_LABELS:
-            st.session_state[f"{label}_radio"] = "Not Present"
-        st.session_state["notes"] = ""
-        st.session_state["flagged"] = False
-        st.session_state["reset_frames"] = False
-
-    for label in FRAME_LABELS:
-        if f"{label}_radio" not in st.session_state:
-            st.session_state[f"{label}_radio"] = "Not Present"
 
     col1, col2 = st.columns(2)
     with col1:
@@ -162,29 +123,7 @@ def main():
         st.write(row.get("translated_text", ""))
 
     st.markdown("---")
-    st.markdown("### 🧠 Frame-wise rationale & evidence highlights")
-    for i in range(1, 8):
-        col_name = f"frame_{i}_evidence"
-        rationale_col = f"frame_{i}_rationale"
-        frame_label = FRAME_LABELS[i - 1]
-        color = FRAME_COLORS.get(col_name, "#eeeeee")
-
-        evidence_val = row.get(col_name, "")
-        rationale_val = row.get(rationale_col, "")
-
-        evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
-        rationale_text = str(rationale_val).strip() if pd.notna(rationale_val) else ""
-
-        phrases = [p.strip() for p in evidence_text.split(";") if p.strip()] if evidence_text else []
-
-        if evidence_text or rationale_text:
-            st.markdown(
-                f"**🟩 {frame_label}**\n\n"
-                f"- *Rationale:* {rationale_text or '—'}\n"
-                f"- *Evidence Phrases:* {', '.join(phrases) if phrases else '—'}"
-            )
-
-    st.markdown("### 🏷️ Frame presence")
+    st.markdown("### 🏷️ Frame Presence")
     frame_selections = {}
     for label in FRAME_LABELS:
         frame_selections[label] = st.radio(
@@ -199,7 +138,6 @@ def main():
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
             st.rerun()
 
     with col_next:
@@ -224,6 +162,8 @@ def main():
             save_annotation(entry)
             sess["current_index"] = current + 1
             save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
             st.rerun()
 
+# Run app
+if __name__ == "__main__":
+    main()

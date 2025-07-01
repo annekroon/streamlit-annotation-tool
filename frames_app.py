@@ -4,8 +4,6 @@ import os
 import csv
 import json
 import numpy as np
-from typing import List
-import string
 
 # === File paths ===
 ANNOTATION_FILE = "annotations.csv"
@@ -122,7 +120,25 @@ def main():
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
 
-    st.markdown("---")
+    # Rationale and Evidence Display
+    st.markdown("### 🧠 Frame-wise Rationale & Evidence")
+    for i in range(1, 8):
+        frame_label = FRAME_LABELS[i - 1]
+        rationale_col = f"frame_{i}_rationale"
+        evidence_col = f"frame_{i}_evidence"
+
+        rationale_text = str(row.get(rationale_col, "")).strip()
+        evidence_text = str(row.get(evidence_col, "")).strip()
+
+        if rationale_text or evidence_text:
+            st.markdown(f"**🟩 {frame_label}**")
+            if rationale_text:
+                st.markdown(f"- *Rationale:* {rationale_text}")
+            if evidence_text:
+                phrases = [p.strip() for p in evidence_text.split(";") if p.strip()]
+                st.markdown(f"- *Evidence phrases:* {', '.join(phrases)}")
+
+    # Frame presence
     st.markdown("### 🏷️ Frame Presence")
     frame_selections = {}
     for label in FRAME_LABELS:

@@ -98,9 +98,11 @@ def main():
     st.set_page_config(layout="wide")
     st.title("📝 Corruption Frame Annotation Tool")
 
-    user_id = st.text_input("Enter your username:")
-    if not user_id:
-        st.stop()
+    user_id = st.selectbox(
+        "Select your username:",
+        ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne"]
+    )
+
 
     sess = safe_load_session(user_id)
     df = load_articles()

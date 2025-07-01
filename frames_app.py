@@ -4,13 +4,13 @@ import os
 import csv
 import json
 import numpy as np
+import html
 
-# === File paths ===
+# === CONFIG ===
 ANNOTATION_FILE = "annotations.csv"
 DATA_PATH = "data/news_sample_with_7_frames.csv"
 SESSION_FOLDER = "sessions"
 
-# === Frame labels ===
 FRAME_LABELS = [
     "Foreign influence threat",
     "Systemic institutional corruption",
@@ -21,7 +21,13 @@ FRAME_LABELS = [
     "Mobilizing anti-corruption"
 ]
 
-# === Load/save session ===
+FRAME_COLORS = {
+    f"frame_{i}_evidence": color for i, color in enumerate([
+        "#cce5ff", "#d5f5e3", "#e6ccff", "#ffe8cc", "#ffcccc", "#f8d7da", "#ffffcc"
+    ], start=1)
+}
+
+# === HELPERS ===
 def load_session(user_id):
     path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
     with open(path, "r", encoding="utf-8") as f:
@@ -42,7 +48,6 @@ def save_session(user_id, session_data):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(session_data, f, indent=2, default=convert)
 
-# === Load articles ===
 @st.cache_data
 def load_articles():
     return pd.read_csv(DATA_PATH)
@@ -57,7 +62,6 @@ def safe_load_session(user_id):
     except (json.JSONDecodeError, FileNotFoundError):
         return fallback_session(user_id)
 
-# === Save annotation to CSV ===
 def save_annotation(entry: dict):
     annotations = []
     if os.path.exists(ANNOTATION_FILE):
@@ -68,11 +72,7 @@ def save_annotation(entry: dict):
         except Exception as e:
             print(f"❌ Error reading annotation file: {e}")
 
-    # Remove existing for the same user/article
-    annotations = [
-        a for a in annotations
-        if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
-    ]
+    annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))]
     annotations.append(entry)
 
     fieldnames = [
@@ -88,14 +88,18 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing annotation file: {e}")
 
-# === Streamlit UI ===
+def jump_to(index: int, sess, user_id):
+    sess["current_index"] = index
+    save_session(user_id, sess)
+    st.rerun()
+
+# === MAIN APP ===
 def main():
     st.set_page_config(layout="wide")
-    st.title("📝 Frame Classification Annotation Tool")
+    st.title("📝 Corruption Frame Annotation Tool")
 
     user_id = st.text_input("Enter your username:")
     if not user_id:
-        st.info("Please enter your username to continue.")
         st.stop()
 
     sess = safe_load_session(user_id)
@@ -110,6 +114,23 @@ def main():
     row = df.iloc[current]
 
     st.subheader(f"Article {current + 1} of {total}")
+    st.number_input(
+        "Jump to Article",
+        0, total - 1, current,
+        key="nav",
+        on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
+    )
+
+    if st.session_state.get("reset_frames", False):
+        for label in FRAME_LABELS:
+            st.session_state[f"{label}_radio"] = "Not Present"
+        st.session_state["notes"] = ""
+        st.session_state["flagged"] = False
+        st.session_state["reset_frames"] = False
+
+    for label in FRAME_LABELS:
+        if f"{label}_radio" not in st.session_state:
+            st.session_state[f"{label}_radio"] = "Not Present"
 
     col1, col2 = st.columns(2)
     with col1:
@@ -120,26 +141,31 @@ def main():
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
 
-    # Rationale and Evidence Display
-    st.markdown("### 🧠 Frame-wise Rationale & Evidence")
+    st.markdown("### 🧠 Frame-wise rationale & evidence")
     for i in range(1, 8):
-        frame_label = FRAME_LABELS[i - 1]
+        col_name = f"frame_{i}_evidence"
         rationale_col = f"frame_{i}_rationale"
-        evidence_col = f"frame_{i}_evidence"
+        frame_label = FRAME_LABELS[i - 1]
+        color = FRAME_COLORS.get(col_name, "#eeeeee")
 
-        rationale_text = str(row.get(rationale_col, "")).strip()
-        evidence_text = str(row.get(evidence_col, "")).strip()
+        evidence_val = row.get(col_name, "")
+        rationale_val = row.get(rationale_col, "")
 
-        if rationale_text or evidence_text:
-            st.markdown(f"**🟩 {frame_label}**")
-            if rationale_text:
-                st.markdown(f"- *Rationale:* {rationale_text}")
-            if evidence_text:
-                phrases = [p.strip() for p in evidence_text.split(";") if p.strip()]
-                st.markdown(f"- *Evidence phrases:* {', '.join(phrases)}")
+        evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
+        rationale_text = str(rationale_val).strip() if pd.notna(rationale_val) else ""
 
-    # Frame presence
-    st.markdown("### 🏷️ Frame Presence")
+        if evidence_text or rationale_text:
+            st.markdown(
+                f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
+                f"background-color:{color}33;'>"
+                f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
+                f"<i><u>Rationale:</u></i><br> {rationale_text or '—'}<br><br>"
+                f"<i><u>Evidence:</u></i> {evidence_text or '—'}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+
+    st.markdown("### 🏷️ Frame presence")
     frame_selections = {}
     for label in FRAME_LABELS:
         frame_selections[label] = st.radio(
@@ -154,6 +180,7 @@ def main():
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
+            st.session_state["reset_frames"] = True
             st.rerun()
 
     with col_next:
@@ -178,8 +205,8 @@ def main():
             save_annotation(entry)
             sess["current_index"] = current + 1
             save_session(user_id, sess)
+            st.session_state["reset_frames"] = True
             st.rerun()
 
-# Run app
 if __name__ == "__main__":
     main()

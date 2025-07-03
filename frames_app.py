@@ -118,8 +118,15 @@ def main():
     current = sess.get("current_index", 0)
 
     if current >= total:
-        st.success("✅ You have completed all articles!")
-        st.stop()
+    st.success("✅ You have completed all articles!")
+
+    if st.button("⬅️ Go back to previous article"):
+        sess["current_index"] = total - 1
+        save_session(user_id, sess)
+        st.session_state["reset_frames"] = True
+        st.rerun()
+
+    st.stop()
 
     row = df.iloc[current]
 

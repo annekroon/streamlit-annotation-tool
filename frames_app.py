@@ -2,220 +2,133 @@ import streamlit as st
 import pandas as pd
 import os
 import csv
-import json
-import numpy as np
-import html
 
-# === CONFIG ===
+# ====== Configuration ======
+FRAME_LABELS = ["Bribery", "Embezzlement", "Nepotism", "Election fraud"]
 ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "data/news_sample_with_7_frames.csv"
-SESSION_FOLDER = "sessions"
 
-FRAME_LABELS = [
-    "Foreign influence threat",
-    "Systemic institutional corruption",
-    "Elite collusion",
-    "Politicized investigations",
-    "Authoritarian reformism",
-    "Judicial and institutional accountability failures",
-    "Mobilizing anti-corruption"
-]
-
-FRAME_COLORS = {
-    f"frame_{i}_evidence": color for i, color in enumerate([
-        "#cce5ff", "#d5f5e3", "#e6ccff", "#ffe8cc", "#ffcccc", "#f8d7da", "#ffffcc"
-    ], start=1)
-}
-
-# === HELPERS ===
-def load_session(user_id):
-    path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_session(user_id, session_data):
-    def convert(obj):
-        if isinstance(obj, (np.integer,)):
-            return int(obj)
-        if isinstance(obj, (np.floating,)):
-            return float(obj)
-        if isinstance(obj, (np.ndarray,)):
-            return obj.tolist()
-        raise TypeError(f"Unserializable object {obj} of type {type(obj)}")
-
-    os.makedirs(SESSION_FOLDER, exist_ok=True)
-    path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(session_data, f, indent=2, default=convert)
-
+# ====== Load Articles ======
 @st.cache_data
 def load_articles():
-    return pd.read_csv(DATA_PATH)
+    return pd.read_csv("articles.csv")  # Must have columns: uri, original_text, translated_text
 
-def fallback_session(user_id):
-    return {"user_id": user_id, "current_index": 0, "annotations": []}
+articles = load_articles()
+article_count = len(articles)
 
-def safe_load_session(user_id):
-    os.makedirs(SESSION_FOLDER, exist_ok=True)
-    try:
-        return load_session(user_id)
-    except (json.JSONDecodeError, FileNotFoundError):
-        return fallback_session(user_id)
+# ====== Init Session State ======
+if "article_index" not in st.session_state:
+    st.session_state.article_index = 0
+if "annotations" not in st.session_state:
+    st.session_state.annotations = []
 
-def save_annotation(entry: dict):
-    annotations = []
-    if os.path.exists(ANNOTATION_FILE):
-        try:
-            with open(ANNOTATION_FILE, mode="r", encoding="utf-8") as f:
-                reader = csv.DictReader(f)
-                annotations = list(reader)
-        except Exception as e:
-            print(f"❌ Error reading annotation file: {e}")
+# ====== Load Current Article ======
+current = st.session_state.article_index
+article = articles.iloc[current]
 
-    annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))]
-    annotations.append(entry)
+st.title("Political Corruption Annotation Tool")
 
-    fieldnames = [
-        'user_id', 'article_index', 'notes', 'flagged',
-        'uri', 'original_text', 'translated_text'
-    ] + [f"{label}_present" for label in FRAME_LABELS]
+st.markdown(f"**Article {current + 1} of {article_count}**")
+st.markdown(f"**URI**: {article['uri']}")
+st.markdown("### Translated Text")
+st.text_area("Article Content", article["translated_text"], height=300, disabled=True)
 
-    try:
-        with open(ANNOTATION_FILE, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(annotations)
-    except Exception as e:
-        print(f"❌ Error writing annotation file: {e}")
+# ====== Restore Previous Annotation if exists ======
+previous_annotations = [
+    a for a in st.session_state.annotations if a["article_index"] == current
+]
+if previous_annotations:
+    prev = previous_annotations[0]
+    for label in FRAME_LABELS:
+        st.session_state[f"{label}_radio"] = prev.get(f"{label}_present", "Not Present")
+    st.session_state["notes"] = prev.get("notes", "")
+    st.session_state["flagged"] = prev.get("flagged", False)
+    st.session_state["corruption_label_radio"] = prev.get("corruption_label", "Yes")
+else:
+    for label in FRAME_LABELS:
+        st.session_state[f"{label}_radio"] = "Not Present"
+    st.session_state["notes"] = ""
+    st.session_state["flagged"] = False
+    st.session_state["corruption_label_radio"] = "Yes"
 
-def jump_to(index: int, sess, user_id):
-    sess["current_index"] = index
-    save_session(user_id, sess)
-    st.rerun()
-
-# === MAIN APP ===
-def main():
-    st.set_page_config(layout="wide")
-    st.title("📝 Corruption Frame Annotation Tool")
-
-    # Show welcome screen if no user ID is selected yet
-    if "user_id" not in st.session_state:
-        user_id = st.selectbox(
-            "Select your username:",
-            ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne"]
-        )
-        if st.button("Start annotating"):
-            st.session_state["user_id"] = user_id
-            st.rerun()
-        st.stop()
-
-    # Load session and continue with annotation UI
-    user_id = st.session_state["user_id"]
-    sess = safe_load_session(user_id)
-    df = load_articles()
-    total = len(df)
-    current = sess.get("current_index", 0)
-
-    if current >= total:
-        st.success("✅ You have completed all articles!")
-        st.stop()
-
-    row = df.iloc[current]
-
-    st.subheader(f"Article {current + 1} of {total}")
-    st.number_input(
-        "Jump to Article",
-        0, total - 1, current,
-        key="nav",
-        on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
+# ====== Annotation Inputs ======
+st.markdown("### Labels")
+for label in FRAME_LABELS:
+    st.radio(
+        f"{label} present?",
+        ["Present", "Not Present"],
+        key=f"{label}_radio"
     )
 
-    if st.session_state.get("reset_frames", False):
-        for label in FRAME_LABELS:
-            st.session_state[f"{label}_radio"] = "Not Present"
-        st.session_state["notes"] = ""
-        st.session_state["flagged"] = False
-        st.session_state["reset_frames"] = False
+st.markdown("### Is this article primarily about political corruption?")
+corruption_label = st.radio(
+    "Select one:",
+    ["Yes", "No"],
+    index=0,
+    key="corruption_label_radio"
+)
 
+st.markdown("### Notes")
+notes = st.text_area("Your notes (optional):", key="notes")
+
+flagged = st.checkbox("Flag this article for review", key="flagged")
+
+# ====== Save Annotations ======
+def save_annotation():
+    entry = {
+        "user_id": "annotator_1",
+        "article_index": current,
+        "uri": article["uri"],
+        "original_text": article["original_text"],
+        "translated_text": article["translated_text"],
+        "notes": st.session_state["notes"],
+        "flagged": st.session_state["flagged"],
+        "corruption_label": st.session_state["corruption_label_radio"]
+    }
     for label in FRAME_LABELS:
-        if f"{label}_radio" not in st.session_state:
-            st.session_state[f"{label}_radio"] = "Not Present"
+        entry[f"{label}_present"] = st.session_state[f"{label}_radio"]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**Original Text**")
-        st.write(row.get("combined_text", ""))
+    # Remove existing annotation for this article
+    st.session_state.annotations = [
+        a for a in st.session_state.annotations if a["article_index"] != current
+    ]
+    st.session_state.annotations.append(entry)
 
-    with col2:
-        st.markdown("**Translated Text**")
-        st.write(row.get("translated_text", ""))
+    # Write to CSV
+    fieldnames = [
+        'user_id', 'article_index', 'notes', 'flagged',
+        'uri', 'original_text', 'translated_text',
+        'corruption_label'
+    ] + [f"{label}_present" for label in FRAME_LABELS]
 
-    st.markdown("### 🧠 Frame-wise rationale & evidence")
-    for i in range(1, 8):
-        col_name = f"frame_{i}_evidence"
-        rationale_col = f"frame_{i}_rationale"
-        frame_label = FRAME_LABELS[i - 1]
-        color = FRAME_COLORS.get(col_name, "#eeeeee")
+    with open(ANNOTATION_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in st.session_state.annotations:
+            writer.writerow(row)
 
-        evidence_val = row.get(col_name, "")
-        rationale_val = row.get(rationale_col, "")
+# ====== Navigation Buttons ======
+col1, col2, col3 = st.columns([1, 1, 4])
+with col1:
+    if st.button("⬅️ Previous", disabled=current == 0):
+        save_annotation()
+        st.session_state.article_index -= 1
+        st.experimental_rerun()
 
-        evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
-        rationale_text = str(rationale_val).strip() if pd.notna(rationale_val) else ""
+with col2:
+    if st.button("Next ➡️", disabled=current == article_count - 1):
+        save_annotation()
+        st.session_state.article_index += 1
+        st.experimental_rerun()
 
-        if evidence_text or rationale_text:
-            st.markdown(
-                f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
-                f"background-color:{color}33;'>"
-                f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
-                f"<i><u>Rationale:</u></i><br> {rationale_text or '—'}<br><br>"
-                f"<i><u>Evidence:</u></i> {evidence_text or '—'}"
-                f"</div>",
-                unsafe_allow_html=True
-            )
+with col3:
+    article_jump = st.number_input("Jump to article:", min_value=1, max_value=article_count, step=1)
+    if st.button("Go"):
+        save_annotation()
+        st.session_state.article_index = article_jump - 1
+        st.experimental_rerun()
 
-    st.markdown("### 🏷️ Frame presence")
-    frame_selections = {}
-    for label in FRAME_LABELS:
-        frame_selections[label] = st.radio(
-            f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio"
-        )
-
-    notes = st.text_area("📝 Comments (optional):", key="notes")
-    flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
-
-    col_prev, col_next = st.columns(2)
-    with col_prev:
-        if st.button("⬅️ Previous") and current > 0:
-            sess["current_index"] = current - 1
-            save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
-            st.rerun()
-
-    with col_next:
-        if st.button("Next ➡️"):
-            entry = {
-                "user_id": user_id,
-                "article_index": current,
-                "notes": notes,
-                "flagged": str(flagged),
-                "uri": row.get("uri", ""),
-                "original_text": row.get("original_text", ""),
-                "translated_text": row.get("translated_text", "")
-            }
-            for label in FRAME_LABELS:
-                entry[f"{label}_present"] = frame_selections[label]
-
-            existing = sess.get("annotations", [])
-            existing = [a for a in existing if a["article_index"] != current]
-            existing.append(entry)
-            sess["annotations"] = existing
-
-            save_annotation(entry)
-            sess["current_index"] = current + 1
-            save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
-            st.rerun()
-
-if __name__ == "__main__":
-    main()
+# ====== Final Save Button ======
+st.markdown("---")
+if st.button("💾 Save Annotations"):
+    save_annotation()
+    st.success("Annotations saved.")

@@ -203,6 +203,7 @@ def main():
         "Your answer:",
         ["Yes", "No"],
         horizontal=True,
+        index=0, 
         key="political_corruption"
     )
 

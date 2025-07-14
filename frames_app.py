@@ -142,7 +142,7 @@ def main():
 
         for label in FRAME_LABELS:
             st.session_state[f"{label}_radio"] = "Not Present"
-        st.session_state["political_corruption"] = "No"
+        st.session_state["political_corruption"] = "Yes"
         st.session_state["notes"] = ""
         st.session_state["flagged"] = False
 

@@ -1,6 +1,10 @@
 import os
 import shutil
 
+# Always work relative to the script's own directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(SCRIPT_DIR)
+
 # Lokale sessiemap
 LOCAL_SESSIONS_DIR = "sessions"
 ANNOTATION_FILE = "annotations.csv"
@@ -12,7 +16,12 @@ def sync_sessions():
     os.makedirs(WEBDAV_SESSIONS_DIR, exist_ok=True)
 
     # Copy session files
-    files = os.listdir(LOCAL_SESSIONS_DIR)
+    try:
+        files = os.listdir(LOCAL_SESSIONS_DIR)
+    except FileNotFoundError:
+        print(f"❌ Map '{LOCAL_SESSIONS_DIR}' niet gevonden.")
+        return
+
     for filename in files:
         local_path = os.path.join(LOCAL_SESSIONS_DIR, filename)
         webdav_path = os.path.join(WEBDAV_SESSIONS_DIR, filename)

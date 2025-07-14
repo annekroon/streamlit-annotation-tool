@@ -4,7 +4,6 @@ import os
 import csv
 import json
 import numpy as np
-import html
 
 # === CONFIG ===
 ANNOTATION_FILE = "annotations.csv"
@@ -72,6 +71,7 @@ def save_annotation(entry: dict):
         except Exception as e:
             print(f"❌ Error reading annotation file: {e}")
 
+    # Remove previous annotation for this user/article
     annotations = [a for a in annotations if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))]
     annotations.append(entry)
 
@@ -92,7 +92,7 @@ def save_annotation(entry: dict):
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
     save_session(user_id, sess)
-    st.experimental_rerun()
+    # Do NOT call st.rerun() here; just update session
 
 # === MAIN APP ===
 def main():
@@ -123,7 +123,6 @@ def main():
         if st.button("⬅️ Go back to previous article"):
             sess["current_index"] = total - 1
             save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
             st.experimental_rerun()
 
         st.stop()
@@ -132,12 +131,13 @@ def main():
 
     st.subheader(f"Article {current + 1} of {total}")
 
-    # Navigation jump with button, fixing st.rerun in callback issue
+    # Jump input + button (replace on_change rerun which is no-op)
     nav = st.number_input("Jump to Article", 0, total - 1, current, key="nav_input")
-    if st.button("Go"):
+    if st.button("Go to article"):
         jump_to(int(nav), sess, user_id)
+        st.experimental_rerun()
 
-    # Restore previous answers if available
+    # Load saved annotation for this article into session_state or initialize
     stored = next((a for a in sess.get("annotations", []) if a["article_index"] == current), None)
     if stored:
         for label in FRAME_LABELS:
@@ -146,26 +146,17 @@ def main():
         st.session_state["notes"] = stored.get("notes", "")
         st.session_state["flagged"] = stored.get("flagged", "False") == "True"
     else:
-        # Reset only if not restored from stored
-        if st.session_state.get("reset_frames", False):
-            for label in FRAME_LABELS:
+        for label in FRAME_LABELS:
+            if f"{label}_radio" not in st.session_state:
                 st.session_state[f"{label}_radio"] = "Not Present"
+        if "political_corruption" not in st.session_state:
             st.session_state["political_corruption"] = "No"
+        if "notes" not in st.session_state:
             st.session_state["notes"] = ""
+        if "flagged" not in st.session_state:
             st.session_state["flagged"] = False
-            st.session_state["reset_frames"] = False
 
-    # Initialize keys if they don't exist (first run)
-    for label in FRAME_LABELS:
-        if f"{label}_radio" not in st.session_state:
-            st.session_state[f"{label}_radio"] = "Not Present"
-    if "political_corruption" not in st.session_state:
-        st.session_state["political_corruption"] = "No"
-    if "notes" not in st.session_state:
-        st.session_state["notes"] = ""
-    if "flagged" not in st.session_state:
-        st.session_state["flagged"] = False
-
+    # Display article texts
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Original Text**")
@@ -175,6 +166,7 @@ def main():
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
 
+    # Display rationale & evidence
     st.markdown("### 🧠 Frame-wise rationale & evidence")
     for i in range(1, 8):
         col_name = f"frame_{i}_evidence"
@@ -199,6 +191,7 @@ def main():
                 unsafe_allow_html=True
             )
 
+    # Frame presence radios
     st.markdown("### 🏷️ Frame presence")
     frame_selections = {}
     for label in FRAME_LABELS:
@@ -206,6 +199,7 @@ def main():
             f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio"
         )
 
+    # Political corruption radio
     st.markdown("### 🗳️ Is this article primarily about political corruption?")
     political_corruption = st.radio(
         "Your answer:",
@@ -214,15 +208,16 @@ def main():
         key="political_corruption"
     )
 
+    # Notes and flag
     notes = st.text_area("📝 Comments (optional):", key="notes")
     flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
 
+    # Navigation buttons
     col_prev, col_next = st.columns(2)
     with col_prev:
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
             st.experimental_rerun()
 
     with col_next:
@@ -248,7 +243,6 @@ def main():
             save_annotation(entry)
             sess["current_index"] = current + 1
             save_session(user_id, sess)
-            st.session_state["reset_frames"] = True
             st.experimental_rerun()
 
 if __name__ == "__main__":

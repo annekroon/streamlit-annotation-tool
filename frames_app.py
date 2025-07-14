@@ -92,6 +92,7 @@ def save_annotation(entry: dict):
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
     save_session(user_id, sess)
+    st.session_state["frames_prepopulated"] = False
     st.rerun()
 
 # === MAIN APP ===
@@ -124,6 +125,7 @@ def main():
             sess["current_index"] = total - 1
             save_session(user_id, sess)
             st.session_state["reset_frames"] = True
+            st.session_state["frames_prepopulated"] = False
             st.rerun()
 
         st.stop()
@@ -137,6 +139,20 @@ def main():
         key="nav",
         on_change=lambda: jump_to(st.session_state.nav, sess, user_id)
     )
+
+    # Load previous annotation if exists
+    existing_annotation = next(
+        (a for a in sess.get("annotations", []) if a["article_index"] == current), None
+    )
+
+    if existing_annotation and not st.session_state.get("frames_prepopulated", False):
+        for label in FRAME_LABELS:
+            st.session_state[f"{label}_radio"] = existing_annotation.get(f"{label}_present", "Not Present")
+
+        st.session_state["political_corruption"] = existing_annotation.get("political_corruption", "No")
+        st.session_state["notes"] = existing_annotation.get("notes", "")
+        st.session_state["flagged"] = existing_annotation.get("flagged", "False") == "True"
+        st.session_state["frames_prepopulated"] = True
 
     if st.session_state.get("reset_frames", False):
         for label in FRAME_LABELS:
@@ -206,6 +222,7 @@ def main():
             sess["current_index"] = current - 1
             save_session(user_id, sess)
             st.session_state["reset_frames"] = True
+            st.session_state["frames_prepopulated"] = False
             st.rerun()
 
     with col_next:
@@ -232,6 +249,7 @@ def main():
             sess["current_index"] = current + 1
             save_session(user_id, sess)
             st.session_state["reset_frames"] = True
+            st.session_state["frames_prepopulated"] = False
             st.rerun()
 
 if __name__ == "__main__":

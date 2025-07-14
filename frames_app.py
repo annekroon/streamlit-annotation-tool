@@ -92,14 +92,12 @@ def save_annotation(entry: dict):
 def jump_to(index: int, sess, user_id):
     sess["current_index"] = index
     save_session(user_id, sess)
-    # Do NOT call st.rerun() here; just update session
 
 # === MAIN APP ===
 def main():
     st.set_page_config(layout="wide")
     st.title("📝 Corruption Frame Annotation Tool")
 
-    # Show welcome screen if no user ID is selected yet
     if "user_id" not in st.session_state:
         user_id = st.selectbox(
             "Select your username:",
@@ -110,7 +108,6 @@ def main():
             st.rerun()
         st.stop()
 
-    # Load session and continue with annotation UI
     user_id = st.session_state["user_id"]
     sess = safe_load_session(user_id)
     df = load_articles()
@@ -128,33 +125,32 @@ def main():
         st.stop()
 
     row = df.iloc[current]
-
     st.subheader(f"Article {current + 1} of {total}")
 
-    # Jump input + button (replace on_change rerun which is no-op)
     nav = st.number_input("Jump to Article", 0, total - 1, current, key="nav_input")
     if st.button("Go to article"):
         jump_to(int(nav), sess, user_id)
         st.rerun()
 
-    # Load saved annotation for this article into session_state or initialize
+    # Load saved annotation values into session_state, only if not already present
     stored = next((a for a in sess.get("annotations", []) if a["article_index"] == current), None)
     if stored:
         for label in FRAME_LABELS:
-            st.session_state[f"{label}_radio"] = stored.get(f"{label}_present", "Not Present")
-        st.session_state["political_corruption"] = stored.get("political_corruption", "No")
-        st.session_state["notes"] = stored.get("notes", "")
-        st.session_state["flagged"] = stored.get("flagged", "False") == "True"
+            key = f"{label}_radio"
+            if key not in st.session_state:
+                st.session_state[key] = stored.get(f"{label}_present", "Not Present")
+        if "political_corruption" not in st.session_state:
+            st.session_state["political_corruption"] = stored.get("political_corruption", "No")
+        if "notes" not in st.session_state:
+            st.session_state["notes"] = stored.get("notes", "")
+        if "flagged" not in st.session_state:
+            st.session_state["flagged"] = stored.get("flagged", "False") == "True"
     else:
         for label in FRAME_LABELS:
-            if f"{label}_radio" not in st.session_state:
-                st.session_state[f"{label}_radio"] = "Not Present"
-        if "political_corruption" not in st.session_state:
-            st.session_state["political_corruption"] = "No"
-        if "notes" not in st.session_state:
-            st.session_state["notes"] = ""
-        if "flagged" not in st.session_state:
-            st.session_state["flagged"] = False
+            st.session_state.setdefault(f"{label}_radio", "Not Present")
+        st.session_state.setdefault("political_corruption", "No")
+        st.session_state.setdefault("notes", "")
+        st.session_state.setdefault("flagged", False)
 
     # Display article texts
     col1, col2 = st.columns(2)
@@ -235,6 +231,7 @@ def main():
             for label in FRAME_LABELS:
                 entry[f"{label}_present"] = frame_selections[label]
 
+            # Update session annotations list
             existing = sess.get("annotations", [])
             existing = [a for a in existing if a["article_index"] != current]
             existing.append(entry)

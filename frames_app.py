@@ -89,34 +89,28 @@ def save_annotation(entry: dict):
     except Exception as e:
         print(f"❌ Error writing annotation file: {e}")
 
-def collect_current_annotation(user_id, current, row):
-    return {
-        "user_id": user_id,
-        "article_index": current,
-        "notes": st.session_state.get("notes", ""),
-        "flagged": str(st.session_state.get("flagged", False)),
-        "uri": row.get("uri", ""),
-        "original_text": row.get("original_text", ""),
-        "translated_text": row.get("translated_text", ""),
-        "political_corruption": st.session_state.get("political_corruption", "No"),
-        **{
-            f"{label}_present": st.session_state.get(f"{label}_radio", "Not Present")
-            for label in FRAME_LABELS
-        }
-    }
+def jump_to(index: int, sess, user_id):
+    sess["current_index"] = index
+    save_session(user_id, sess)
+    st.experimental_rerun()
 
 # === MAIN APP ===
 def main():
     st.set_page_config(layout="wide")
     st.title("📝 Corruption Frame Annotation Tool")
 
+    # Show welcome screen if no user ID is selected yet
     if "user_id" not in st.session_state:
-        user_id = st.selectbox("Select your username:", ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne"])
+        user_id = st.selectbox(
+            "Select your username:",
+            ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne"]
+        )
         if st.button("Start annotating"):
             st.session_state["user_id"] = user_id
-            st.rerun()
+            st.experimental_rerun()
         st.stop()
 
+    # Load session and continue with annotation UI
     user_id = st.session_state["user_id"]
     sess = safe_load_session(user_id)
     df = load_articles()
@@ -125,46 +119,58 @@ def main():
 
     if current >= total:
         st.success("✅ You have completed all articles!")
+
         if st.button("⬅️ Go back to previous article"):
             sess["current_index"] = total - 1
             save_session(user_id, sess)
-            st.rerun()
+            st.session_state["reset_frames"] = True
+            st.experimental_rerun()
+
         st.stop()
 
     row = df.iloc[current]
 
     st.subheader(f"Article {current + 1} of {total}")
 
-    st.number_input(
-        "Jump to Article",
-        0, total - 1, current,
-        key="nav",
-        on_change=lambda: jump_to(st.session_state.nav, sess, user_id, current, row)
-    )
+    # Navigation jump with button, fixing st.rerun in callback issue
+    nav = st.number_input("Jump to Article", 0, total - 1, current, key="nav_input")
+    if st.button("Go"):
+        jump_to(int(nav), sess, user_id)
 
-    if st.session_state.get("reset_frames", False):
+    # Restore previous answers if available
+    stored = next((a for a in sess.get("annotations", []) if a["article_index"] == current), None)
+    if stored:
         for label in FRAME_LABELS:
+            st.session_state[f"{label}_radio"] = stored.get(f"{label}_present", "Not Present")
+        st.session_state["political_corruption"] = stored.get("political_corruption", "No")
+        st.session_state["notes"] = stored.get("notes", "")
+        st.session_state["flagged"] = stored.get("flagged", "False") == "True"
+    else:
+        # Reset only if not restored from stored
+        if st.session_state.get("reset_frames", False):
+            for label in FRAME_LABELS:
+                st.session_state[f"{label}_radio"] = "Not Present"
+            st.session_state["political_corruption"] = "No"
+            st.session_state["notes"] = ""
+            st.session_state["flagged"] = False
+            st.session_state["reset_frames"] = False
+
+    # Initialize keys if they don't exist (first run)
+    for label in FRAME_LABELS:
+        if f"{label}_radio" not in st.session_state:
             st.session_state[f"{label}_radio"] = "Not Present"
+    if "political_corruption" not in st.session_state:
+        st.session_state["political_corruption"] = "No"
+    if "notes" not in st.session_state:
         st.session_state["notes"] = ""
+    if "flagged" not in st.session_state:
         st.session_state["flagged"] = False
-        st.session_state["reset_frames"] = False
-
-    existing_annotation = next(
-        (a for a in sess.get("annotations", []) if a["article_index"] == current), None
-    )
-
-    if existing_annotation and not st.session_state.get("frames_prepopulated", False):
-        for label in FRAME_LABELS:
-            st.session_state[f"{label}_radio"] = existing_annotation.get(f"{label}_present", "Not Present")
-        st.session_state["political_corruption"] = existing_annotation.get("political_corruption", "No")
-        st.session_state["notes"] = existing_annotation.get("notes", "")
-        st.session_state["flagged"] = existing_annotation.get("flagged", "False") == "True"
-        st.session_state["frames_prepopulated"] = True
 
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Original Text**")
         st.write(row.get("combined_text", ""))
+
     with col2:
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
@@ -176,64 +182,74 @@ def main():
         frame_label = FRAME_LABELS[i - 1]
         color = FRAME_COLORS.get(col_name, "#eeeeee")
 
-        evidence_text = str(row.get(col_name, "")).strip()
-        rationale_text = str(row.get(rationale_col, "")).strip()
+        evidence_val = row.get(col_name, "")
+        rationale_val = row.get(rationale_col, "")
+
+        evidence_text = str(evidence_val).strip() if pd.notna(evidence_val) else ""
+        rationale_text = str(rationale_val).strip() if pd.notna(rationale_val) else ""
 
         if evidence_text or rationale_text:
             st.markdown(
                 f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
                 f"background-color:{color}33;'>"
                 f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
-                f"<i><u>Rationale:</u></i><br> {html.escape(rationale_text) or '—'}<br><br>"
-                f"<i><u>Evidence:</u></i> {html.escape(evidence_text) or '—'}"
+                f"<i><u>Rationale:</u></i><br> {rationale_text or '—'}<br><br>"
+                f"<i><u>Evidence:</u></i> {evidence_text or '—'}"
                 f"</div>",
                 unsafe_allow_html=True
             )
 
     st.markdown("### 🏷️ Frame presence")
+    frame_selections = {}
     for label in FRAME_LABELS:
-        st.radio(f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio")
+        frame_selections[label] = st.radio(
+            f"{label}:", ["Not Present", "Present"], horizontal=True, key=f"{label}_radio"
+        )
 
     st.markdown("### 🗳️ Is this article primarily about political corruption?")
-    st.radio("Your answer:", ["Yes", "No"], horizontal=True, key="political_corruption")
+    political_corruption = st.radio(
+        "Your answer:",
+        ["Yes", "No"],
+        horizontal=True,
+        key="political_corruption"
+    )
 
-    st.text_area("📝 Comments (optional):", key="notes")
-    st.checkbox("🚩 Flag this article for review", key="flagged")
-
-    # 🔁 Autosave on change
-    if st.session_state.get("frames_prepopulated", False):
-        entry = collect_current_annotation(user_id, current, row)
-        sess["annotations"] = [
-            a for a in sess.get("annotations", []) if a["article_index"] != current
-        ] + [entry]
-        save_annotation(entry)
-        save_session(user_id, sess)
+    notes = st.text_area("📝 Comments (optional):", key="notes")
+    flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
 
     col_prev, col_next = st.columns(2)
     with col_prev:
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.session_state["frames_prepopulated"] = False
-            st.rerun()
+            st.session_state["reset_frames"] = True
+            st.experimental_rerun()
 
     with col_next:
         if st.button("Next ➡️"):
+            entry = {
+                "user_id": user_id,
+                "article_index": current,
+                "notes": notes,
+                "flagged": str(flagged),
+                "uri": row.get("uri", ""),
+                "original_text": row.get("original_text", ""),
+                "translated_text": row.get("translated_text", ""),
+                "political_corruption": political_corruption
+            }
+            for label in FRAME_LABELS:
+                entry[f"{label}_present"] = frame_selections[label]
+
+            existing = sess.get("annotations", [])
+            existing = [a for a in existing if a["article_index"] != current]
+            existing.append(entry)
+            sess["annotations"] = existing
+
+            save_annotation(entry)
             sess["current_index"] = current + 1
             save_session(user_id, sess)
-            st.session_state["frames_prepopulated"] = False
-            st.rerun()
-
-def jump_to(index: int, sess, user_id, current, row):
-    entry = collect_current_annotation(user_id, current, row)
-    sess["annotations"] = [
-        a for a in sess.get("annotations", []) if a["article_index"] != current
-    ] + [entry]
-    save_annotation(entry)
-    sess["current_index"] = index
-    save_session(user_id, sess)
-    st.session_state["frames_prepopulated"] = False
-    st.rerun()
+            st.session_state["reset_frames"] = True
+            st.experimental_rerun()
 
 if __name__ == "__main__":
     main()

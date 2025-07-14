@@ -107,7 +107,7 @@ def main():
         )
         if st.button("Start annotating"):
             st.session_state["user_id"] = user_id
-            st.experimental_rerun()
+            st.rerun()
         st.stop()
 
     # Load session and continue with annotation UI
@@ -123,7 +123,7 @@ def main():
         if st.button("⬅️ Go back to previous article"):
             sess["current_index"] = total - 1
             save_session(user_id, sess)
-            st.experimental_rerun()
+            st.rerun()
 
         st.stop()
 
@@ -135,7 +135,7 @@ def main():
     nav = st.number_input("Jump to Article", 0, total - 1, current, key="nav_input")
     if st.button("Go to article"):
         jump_to(int(nav), sess, user_id)
-        st.experimental_rerun()
+        st.rerun()
 
     # Load saved annotation for this article into session_state or initialize
     stored = next((a for a in sess.get("annotations", []) if a["article_index"] == current), None)
@@ -218,7 +218,7 @@ def main():
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
-            st.experimental_rerun()
+            st.rerun()
 
     with col_next:
         if st.button("Next ➡️"):
@@ -243,7 +243,7 @@ def main():
             save_annotation(entry)
             sess["current_index"] = current + 1
             save_session(user_id, sess)
-            st.experimental_rerun()
+            st.rerun()
 
 if __name__ == "__main__":
     main()

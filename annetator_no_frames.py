@@ -6,7 +6,7 @@ import json
 import numpy as np
 
 # === CONFIG ===
-DATA_PATH = os.path.expanduser("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/ICR_test1/icr2_sample_raw.csv")
+DATA_PATH = os.path.expanduser("/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/ICR_test2/icr2_sample_raw.csv")
 ANNOTATION_FILE = "annotations_icr2.csv"
 SESSION_FOLDER = "sessions_icr2"
 

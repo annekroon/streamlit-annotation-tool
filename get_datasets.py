@@ -2,7 +2,7 @@ import shutil
 import os
 
 # Pad naar bronbestand
-source_file = os.path.expanduser("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/ICR_test2/icr2_sample_raw.csv")
+source_file = os.path.expanduser("~/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/ICR_test2/icr2_sample_LLM_annotated.csv")
 
 # Pad naar doelmap
 destination_dir = "/home/akroon/streamlit-annotation-tool/data"

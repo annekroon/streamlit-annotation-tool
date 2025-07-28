@@ -6,9 +6,9 @@ import json
 import numpy as np
 
 # === CONFIG ===
-ANNOTATION_FILE = "annotations.csv"
-DATA_PATH = "data/news_sample_with_7_frames.csv"
-SESSION_FOLDER = "sessions"
+ANNOTATION_FILE = "annotations_icr2.csv"
+DATA_PATH = "data/icr2_sample_LLM_annotated.csv"
+SESSION_FOLDER = "sessions_icr2"
 
 FRAME_LABELS = [
     "Foreign influence threat",

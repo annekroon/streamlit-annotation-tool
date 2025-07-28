@@ -173,17 +173,19 @@ def main():
         confidence_col = f"frame_{i}_confidence"
         color = FRAME_COLORS.get(f"frame_{i}_evidence", "#eeeeee")
     
-        frame_label_value = str(row.get(name_col, "None")).strip()
+        frame_label_value = str(row.get(name_col, "")).strip()
         rationale_text = str(row.get(rationale_col, "")).strip()
         confidence_val_raw = row.get(confidence_col, "")
     
+        # ✅ Skip if confidence is missing or not a valid number
         try:
             confidence_float = float(confidence_val_raw)
         except (ValueError, TypeError):
-            continue  # ❌ skip if confidence is missing or invalid
+            continue
     
-        if frame_label_value == "None" or not rationale_text:
-            continue  # ❌ skip if label is "None" or rationale is empty
+        # ✅ Skip if label is "None", "nan", or blank — or rationale is empty
+        if frame_label_value.lower() in ["none", "nan", ""] or not rationale_text or rationale_text.lower() == "nan":
+            continue
     
         confidence_text = f"{confidence_float:.0f}"
         warning_icon = " ⚠️" if confidence_float < 90 else ""
@@ -197,6 +199,7 @@ def main():
             f"</div>",
             unsafe_allow_html=True
         )
+    
 
 
     # === FRAME PRESENCE ===

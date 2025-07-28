@@ -165,34 +165,40 @@ def main():
         st.write(row.get("translated_text", ""))
 
     # === RATIONALE & CONFIDENCE DISPLAY ===
+    # === RATIONALE & CONFIDENCE DISPLAY ===
     st.markdown("### 🧠 Frame-wise rationale & confidence")
     for i in range(1, 8):
+        frame_col = f"frame_{i}_label"
         rationale_col = f"frame_{i}_rationale"
         confidence_col = f"frame_{i}_confidence"
-        frame_label = FRAME_LABELS[i - 1]
         color = FRAME_COLORS.get(f"frame_{i}_evidence", "#eeeeee")
     
+        # Read actual frame assignment text from data (e.g. "Elite collusion" or "None")
+        frame_label_value = row.get(frame_col, "None")
         rationale_text = str(row.get(rationale_col, "")).strip()
         confidence_val_raw = row.get(confidence_col, "")
+    
         try:
             confidence_float = float(confidence_val_raw)
-            confidence_text = f"{confidence_float:.0f}"
         except (ValueError, TypeError):
-            confidence_float = None
-            confidence_text = "—"
+            continue  # ❌ skip if confidence is missing or invalid
     
-        warning_icon = " ⚠️" if confidence_float is not None and confidence_float < 90 else ""
+        # ❌ Skip if frame is explicitly "None" or rationale is blank
+        if frame_label_value == "None" or not rationale_text:
+            continue
     
-        if frame_label != "None" and rationale_text:
-            st.markdown(
-                f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
-                f"background-color:{color}33;'>"
-                f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
-                f"<i><u>Rationale:</u></i><br> {rationale_text}<br><br>"
-                f"<i><u>Confidence:</u></i> {confidence_text}{warning_icon}"
-                f"</div>",
-                unsafe_allow_html=True
-            )
+        confidence_text = f"{confidence_float:.0f}"
+        warning_icon = " ⚠️" if confidence_float < 90 else ""
+    
+        st.markdown(
+            f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
+            f"background-color:{color}33;'>"
+            f"<b style='color:{color};'>🟩 {frame_label_value}</b><br><br>"
+            f"<i><u>Rationale:</u></i><br> {rationale_text}<br><br>"
+            f"<i><u>Confidence:</u></i> {confidence_text}{warning_icon}"
+            f"</div>",
+            unsafe_allow_html=True
+        )
 
     # === FRAME PRESENCE ===
     st.markdown("### 🏷️ Frame presence")

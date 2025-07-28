@@ -15,7 +15,7 @@ CONFIGS = {
     "icr2": {
         "local_dir": "sessions_icr2",
         "annotation_file": "annotations_icr2.csv",
-        "webdav_dir": "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/ICR_test2/sessionsca"
+        "webdav_dir": "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/ICR_test2/sessions"
     }
 }
 

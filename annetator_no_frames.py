@@ -165,7 +165,6 @@ def main():
         st.write(row.get("translated_text", ""))
 
     # === RATIONALE & CONFIDENCE DISPLAY ===
-    # === RATIONALE & CONFIDENCE DISPLAY ===
     st.markdown("### 🧠 Frame-wise rationale & confidence")
     for i in range(1, 8):
         name_col = f"frame_{i}_name"
@@ -183,8 +182,12 @@ def main():
         except (ValueError, TypeError):
             continue
     
-        # ✅ Skip if label is "None", "nan", or blank — or rationale is empty
-        if frame_label_value.lower() in ["none", "nan", ""] or not rationale_text or rationale_text.lower() == "nan":
+        # ✅ Skip if frame label is None, empty, nan, or NOT something
+        if (
+            not rationale_text or rationale_text.lower() == "nan" or
+            frame_label_value.lower() in ["none", "nan", ""] or
+            frame_label_value.upper().startswith("NOT ")
+        ):
             continue
     
         confidence_text = f"{confidence_float:.0f}"
@@ -199,7 +202,6 @@ def main():
             f"</div>",
             unsafe_allow_html=True
         )
-    
 
 
     # === FRAME PRESENCE ===

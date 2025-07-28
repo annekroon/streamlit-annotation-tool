@@ -6,8 +6,8 @@ import json
 import numpy as np
 
 # === CONFIG ===
-DATA_PATH = os.path.expanduser("data/icr2_sample_raw.csv")
 ANNOTATION_FILE = "annotations_icr2.csv"
+DATA_PATH = "data/icr2_sample_LLM_annotated.csv"
 SESSION_FOLDER = "sessions_icr2"
 
 FRAME_LABELS = [
@@ -20,9 +20,15 @@ FRAME_LABELS = [
     "Mobilizing anti-corruption"
 ]
 
+FRAME_COLORS = {
+    f"frame_{i}_evidence": color for i, color in enumerate([
+        "#cce5ff", "#d5f5e3", "#e6ccff", "#ffe8cc", "#ffcccc", "#f8d7da", "#ffffcc"
+    ], start=1)
+}
+
 # === HELPERS ===
 def load_session(user_id):
-    path = os.path.join(SESSION_FOLDER, f"{user_id}_session_icr2.json")
+    path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -37,7 +43,7 @@ def save_session(user_id, session_data):
         raise TypeError(f"Unserializable object {obj} of type {type(obj)}")
 
     os.makedirs(SESSION_FOLDER, exist_ok=True)
-    path = os.path.join(SESSION_FOLDER, f"{user_id}_session_icr2.json")
+    path = os.path.join(SESSION_FOLDER, f"{user_id}_session.json")
     with open(path, "w", encoding="utf-8") as f:
         json.dump(session_data, f, indent=2, default=convert)
 
@@ -65,6 +71,7 @@ def save_annotation(entry: dict):
         except Exception as e:
             print(f"❌ Error reading annotation file: {e}")
 
+    # Remove previous annotation for this user/article
     annotations = [
         a for a in annotations
         if not (a["user_id"] == entry["user_id"] and a["article_index"] == str(entry["article_index"]))
@@ -112,10 +119,12 @@ def main():
 
     if current >= total:
         st.success("✅ You have completed all articles!")
+
         if st.button("⬅️ Go back to previous article"):
             sess["current_index"] = total - 1
             save_session(user_id, sess)
             st.rerun()
+
         st.stop()
 
     row = df.iloc[current]
@@ -127,8 +136,10 @@ def main():
         jump_to(int(nav), sess, user_id)
         st.rerun()
 
+    # ✅ RESET STATE WHEN ARTICLE CHANGES
     if st.session_state.get("last_loaded_index") != current:
         st.session_state["last_loaded_index"] = current
+
         for label in FRAME_LABELS:
             st.session_state[f"{label}_radio"] = "Not Present"
         st.session_state["political_corruption"] = "Yes"
@@ -147,11 +158,41 @@ def main():
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Original Text**")
-        st.write(row.get("original_text", row.get("combined_text", "")))
+        st.write(row.get("combined_text", ""))
 
     with col2:
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
+
+    # === RATIONALE & CONFIDENCE DISPLAY ===
+    st.markdown("### 🧠 Frame-wise rationale & confidence")
+    for i in range(1, 8):
+        rationale_col = f"frame_{i}_rationale"
+        confidence_col = f"frame_{i}_confidence"
+        frame_label = FRAME_LABELS[i - 1]
+        color = FRAME_COLORS.get(f"frame_{i}_evidence", "#eeeeee")
+    
+        rationale_text = str(row.get(rationale_col, "")).strip()
+        confidence_val_raw = row.get(confidence_col, "")
+        try:
+            confidence_float = float(confidence_val_raw)
+            confidence_text = f"{confidence_float:.0f}"
+        except (ValueError, TypeError):
+            confidence_float = None
+            confidence_text = "—"
+    
+        warning_icon = " ⚠️" if confidence_float is not None and confidence_float < 90 else ""
+    
+        if frame_label != "None" and rationale_text:
+            st.markdown(
+                f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
+                f"background-color:{color}33;'>"
+                f"<b style='color:{color};'>🟩 {frame_label}</b><br><br>"
+                f"<i><u>Rationale:</u></i><br> {rationale_text}<br><br>"
+                f"<i><u>Confidence:</u></i> {confidence_text}{warning_icon}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
 
     # === FRAME PRESENCE ===
     st.markdown("### 🏷️ Frame presence")
@@ -167,7 +208,7 @@ def main():
         "Your answer:",
         ["Yes", "No"],
         horizontal=True,
-        index=0,
+        index=0, 
         key="political_corruption"
     )
 
@@ -191,7 +232,7 @@ def main():
                 "notes": notes,
                 "flagged": str(flagged),
                 "uri": row.get("uri", ""),
-                "original_text": row.get("original_text", row.get("combined_text", "")),
+                "original_text": row.get("original_text", ""),
                 "translated_text": row.get("translated_text", ""),
                 "political_corruption": political_corruption
             }

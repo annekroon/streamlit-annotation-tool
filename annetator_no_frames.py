@@ -168,13 +168,12 @@ def main():
     # === RATIONALE & CONFIDENCE DISPLAY ===
     st.markdown("### 🧠 Frame-wise rationale & confidence")
     for i in range(1, 8):
-        frame_col = f"frame_{i}_label"
+        name_col = f"frame_{i}_name"
         rationale_col = f"frame_{i}_rationale"
         confidence_col = f"frame_{i}_confidence"
         color = FRAME_COLORS.get(f"frame_{i}_evidence", "#eeeeee")
     
-        # Read actual frame assignment text from data (e.g. "Elite collusion" or "None")
-        frame_label_value = row.get(frame_col, "None")
+        frame_label_value = str(row.get(name_col, "None")).strip()
         rationale_text = str(row.get(rationale_col, "")).strip()
         confidence_val_raw = row.get(confidence_col, "")
     
@@ -183,9 +182,8 @@ def main():
         except (ValueError, TypeError):
             continue  # ❌ skip if confidence is missing or invalid
     
-        # ❌ Skip if frame is explicitly "None" or rationale is blank
         if frame_label_value == "None" or not rationale_text:
-            continue
+            continue  # ❌ skip if label is "None" or rationale is empty
     
         confidence_text = f"{confidence_float:.0f}"
         warning_icon = " ⚠️" if confidence_float < 90 else ""
@@ -199,6 +197,7 @@ def main():
             f"</div>",
             unsafe_allow_html=True
         )
+
 
     # === FRAME PRESENCE ===
     st.markdown("### 🏷️ Frame presence")

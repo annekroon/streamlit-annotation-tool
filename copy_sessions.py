@@ -1,12 +1,11 @@
 import os
 import shutil
-import sys
 
 # Always work relative to the script's own directory
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 os.chdir(SCRIPT_DIR)
 
-# Configuration options
+# Configuration options for both sync tasks
 CONFIGS = {
     "default": {
         "local_dir": "sessions",
@@ -20,10 +19,12 @@ CONFIGS = {
     }
 }
 
-def sync_sessions(config):
+def sync_sessions(name, config):
     local_dir = config["local_dir"]
     annotation_file = config["annotation_file"]
     webdav_dir = config["webdav_dir"]
+
+    print(f"\n🔄 Start synchronisatie voor '{name}'")
 
     os.makedirs(webdav_dir, exist_ok=True)
 
@@ -56,10 +57,5 @@ def sync_sessions(config):
         print(f"⚠️ {annotation_file} niet gevonden. Geen annotaties gekopieerd.")
 
 if __name__ == "__main__":
-    mode = sys.argv[1] if len(sys.argv) > 1 else "default"
-    if mode not in CONFIGS:
-        print(f"❌ Ongeldige modus '{mode}'. Kies uit: {', '.join(CONFIGS.keys())}")
-        sys.exit(1)
-
-    print(f"📂 Synchroniseren in modus: {mode}")
-    sync_sessions(CONFIGS[mode])
+    for name, config in CONFIGS.items():
+        sync_sessions(name, config)

@@ -9,7 +9,7 @@ os.chdir(SCRIPT_DIR)
 CONFIG = {
     "local_dir": "sessions_final",  # <-- corrected here
     "annotation_file": "annotations_final.csv",
-    "webdav_dir": "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/ICR/final_sample/sessions"
+    "webdav_dir": "/home/akroon/webdav/ASCOR-FMG-5580-RESPOND-news-data (Projectfolder)/annotations/coding_frames/final_sample/sessions"
 }
 
 def is_final_sample(filename):

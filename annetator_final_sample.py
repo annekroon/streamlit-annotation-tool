@@ -4,6 +4,7 @@ import os
 import csv
 import json
 import numpy as np
+from datetime import datetime
 
 # === CONFIG ===
 ANNOTATION_FILE = "annotations_final.csv"
@@ -99,7 +100,7 @@ def save_annotation(entry: dict):
     fieldnames = [
         'user_id', 'article_index', 'notes', 'flagged',
         'uri', 'original_text', 'translated_text',
-        'political_corruption'
+        'political_corruption', 'timestamp'
     ] + [f"{label}_present" for label in FRAME_LABELS]
 
     try:
@@ -146,6 +147,14 @@ def main():
     df = load_articles(data_path)
     total = len(df)
     current = sess.get("current_index", 0)
+
+    # Show welcome or welcome-back message once per login
+    if "welcome_shown" not in st.session_state:
+        if current > 0:
+            st.info(f"Welcome back, {user_id}! Resuming at article {current + 1} of {total}.")
+        else:
+            st.info(f"Welcome, {user_id}! You have {total} articles to annotate.")
+        st.session_state["welcome_shown"] = True
 
     # End-of-data message
     if current >= total:
@@ -282,16 +291,17 @@ def main():
     notes = st.text_area("📝 Comments (optional):", key="notes")
     flagged = st.checkbox("🚩 Flag this article for review", key="flagged")
 
-    # === NAVIGATION ===
-    col_prev, col_next = st.columns(2)
+    # === NAVIGATION (with Save progress) ===
+    col_prev, col_save, col_next = st.columns(3)
     with col_prev:
         if st.button("⬅️ Previous") and current > 0:
             sess["current_index"] = current - 1
             save_session(user_id, sess)
             st.rerun()
 
-    with col_next:
-        if st.button("Next ➡️"):
+    with col_save:
+        if st.button("💾 Save progress"):
+            # Build entry including timestamp
             entry = {
                 "user_id": user_id,
                 "article_index": current,
@@ -300,18 +310,41 @@ def main():
                 "uri": row.get("uri", ""),
                 "original_text": row.get("original_text", ""),
                 "translated_text": row.get("translated_text", ""),
-                "political_corruption": political_corruption
+                "political_corruption": political_corruption,
+                "timestamp": datetime.now().isoformat()
             }
             for label in FRAME_LABELS:
                 entry[f"{label}_present"] = frame_selections[label]
-
             # Update session annotations
             existing = sess.get("annotations", [])
             existing = [a for a in existing if a["article_index"] != current]
             existing.append(entry)
             sess["annotations"] = existing
+            save_annotation(entry)
+            save_session(user_id, sess)
+            st.success("Progress saved. You can close this tab and resume later.")
+            st.stop()
 
-            # Persist annotation and session
+    with col_next:
+        if st.button("Next ➡️"):
+            # Build entry including timestamp and move to next article
+            entry = {
+                "user_id": user_id,
+                "article_index": current,
+                "notes": notes,
+                "flagged": str(flagged),
+                "uri": row.get("uri", ""),
+                "original_text": row.get("original_text", ""),
+                "translated_text": row.get("translated_text", ""),
+                "political_corruption": political_corruption,
+                "timestamp": datetime.now().isoformat()
+            }
+            for label in FRAME_LABELS:
+                entry[f"{label}_present"] = frame_selections[label]
+            existing = sess.get("annotations", [])
+            existing = [a for a in existing if a["article_index"] != current]
+            existing.append(entry)
+            sess["annotations"] = existing
             save_annotation(entry)
             sess["current_index"] = current + 1
             save_session(user_id, sess)

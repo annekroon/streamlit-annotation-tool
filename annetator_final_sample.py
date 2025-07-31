@@ -298,9 +298,10 @@ def main():
             sess["current_index"] = current - 1
             save_session(user_id, sess)
             st.rerun()
-
+    
+    
     with col_save:
-        if st.button("💾 Save progress"):
+        if st.button("💾 I'm done for now, save my progress"):
             # Build entry including timestamp
             entry = {
                 "user_id": user_id,

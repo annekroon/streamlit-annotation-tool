@@ -10,7 +10,6 @@ ANNOTATION_FILE = "annotations_final.csv"
 SESSION_FOLDER = "sessions_final"
 
 # Mapping from coder names to their dataset paths.
-# Real coders and test accounts point to the same underlying data.
 USER_DATASET = {
     "Assia": "data/Netherlands_Assia_sample_250_llm_annotated.csv",
     "TestAssia": "data/Netherlands_Assia_sample_250_llm_annotated.csv",
@@ -20,7 +19,6 @@ USER_DATASET = {
     "TestElisa": "data/United_Kingdom_Elisa_sample_250_llm_annotated.csv",
     "Luigia": "data/Italy_Luigia_sample_250_llm_annotated.csv",
     "TestLuigia": "data/Italy_Luigia_sample_250_llm_annotated.csv",
-    # If Yara or Anne need a specific dataset, add them here.
 }
 
 FRAME_LABELS = [
@@ -124,10 +122,10 @@ def main():
 
     # User login / selection
     if "user_id" not in st.session_state:
-        # Real coders + test accounts
+        # Real coders + test accounts (Yara and Anne removed)
         user_choice = st.selectbox(
             "Select your username:",
-            ["Assia", "Alexander", "Elisa", "Luigia", "Yara", "Anne",
+            ["Assia", "Alexander", "Elisa", "Luigia",
              "TestAssia", "TestAlexander", "TestElisa", "TestLuigia"]
         )
         if st.button("Start annotating"):
@@ -151,12 +149,10 @@ def main():
 
     if current >= total:
         st.success("✅ You have completed all articles!")
-
         if st.button("⬅️ Go back to previous article"):
             sess["current_index"] = total - 1
             save_session(user_id, sess)
             st.rerun()
-
         st.stop()
 
     row = df.iloc[current]
@@ -198,38 +194,59 @@ def main():
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
 
-    # === RATIONALE & CONFIDENCE DISPLAY ===
-    st.markdown("### 🧠 Frame-wise rationale & confidence")
+    # === RATIONALE & CONFIDENCE (and Evidence) DISPLAY ===
+    st.markdown("### 🧠 Frame-wise rationale, evidence & confidence")
     for i in range(1, 8):
         name_col = f"frame_{i}_name"
         rationale_col = f"frame_{i}_rationale"
         confidence_col = f"frame_{i}_confidence"
+        evidence_col = f"frame_{i}_evidence"
         color = FRAME_COLORS.get(f"frame_{i}_evidence", "#eeeeee")
 
         frame_label_value = str(row.get(name_col, "")).strip()
         rationale_text = str(row.get(rationale_col, "")).strip()
+        evidence_text = str(row.get(evidence_col, "")).strip()
         confidence_val_raw = row.get(confidence_col, "")
 
+        # Skip if confidence is missing or not convertible
         try:
             confidence_float = float(confidence_val_raw)
         except (ValueError, TypeError):
             continue
 
+        # Skip if confidence is NaN
+        if confidence_float != confidence_float:
+            continue
+
+        # Skip if rationale text or frame label is empty or flagged as error/NA
         if (
-            not rationale_text or rationale_text.lower() == "nan" or
+            not rationale_text or
+            rationale_text.lower() == "nan" or
+            rationale_text.lower().startswith("error") or
+            "no valid json" in rationale_text.lower() or
             frame_label_value.lower() in ["none", "nan", ""] or
             frame_label_value.upper().startswith("NOT ")
         ):
             continue
 
+        # Format the confidence
         confidence_text = f"{confidence_float:.0f}"
         warning_icon = " ⚠️" if confidence_float < 90 else ""
+
+        # Decide whether to show evidence
+        show_evidence = evidence_text and evidence_text.lower() != "nan"
+
+        # Build the HTML block
+        evidence_html = ""
+        if show_evidence:
+            evidence_html = f"<i><u>Evidence:</u></i><br> {evidence_text}<br><br>"
 
         st.markdown(
             f"<div style='margin-top:10px; padding:10px; border-left: 6px solid {color}; "
             f"background-color:{color}33;'>"
             f"<b style='color:{color};'>🟩 {frame_label_value}</b><br><br>"
             f"<i><u>Rationale:</u></i><br> {rationale_text}<br><br>"
+            f"{evidence_html}"
             f"<i><u>Confidence:</u></i> {confidence_text}{warning_icon}"
             f"</div>",
             unsafe_allow_html=True

@@ -147,6 +147,7 @@ def main():
     total = len(df)
     current = sess.get("current_index", 0)
 
+    # End-of-data message
     if current >= total:
         st.success("✅ You have completed all articles!")
         if st.button("⬅️ Go back to previous article"):
@@ -157,13 +158,20 @@ def main():
 
     row = df.iloc[current]
 
-    # Header
+    # Header with 1-based numbering
     st.subheader(f"Article {current + 1} of {total}")
 
-    # Jump-to navigation
-    nav = st.number_input("Jump to Article", 0, total - 1, current, key="nav_input")
+    # Jump-to navigation (1-based to align with header)
+    nav = st.number_input(
+        "Jump to Article",
+        min_value=1,
+        max_value=total,
+        value=current + 1,
+        key="nav_input"
+    )
     if st.button("Go to article"):
-        jump_to(int(nav), sess, user_id)
+        # Convert the 1-based input back to 0-based index
+        jump_to(int(nav) - 1, sess, user_id)
         st.rerun()
 
     # === RESET STATE WHEN ARTICLE CHANGES ===
@@ -194,7 +202,7 @@ def main():
         st.markdown("**Translated Text**")
         st.write(row.get("translated_text", ""))
 
-    # === RATIONALE & CONFIDENCE (and Evidence) DISPLAY ===
+    # === RATIONALE, EVIDENCE & CONFIDENCE DISPLAY ===
     st.markdown("### 🧠 Frame-wise rationale, evidence & confidence")
     for i in range(1, 8):
         name_col = f"frame_{i}_name"
@@ -214,7 +222,7 @@ def main():
         except (ValueError, TypeError):
             continue
 
-        # Skip if confidence is NaN
+        # Skip if confidence is NaN (NaN != NaN)
         if confidence_float != confidence_float:
             continue
 
